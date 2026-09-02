@@ -1,0 +1,66 @@
+terrain_nav_node:
+  ros__parameters:
+    use_sim_time: false
+
+    odom_topic: /Odometry
+    fused_map_topic: /car_0_terrain_analyzer/fused_map
+    cmd_topic: /cmd_vel
+    frame_id: map
+
+    wheel_base: 0.535
+    max_steer: 0.31
+    max_steer_rate: 0.75
+    max_speed: 0.45
+    min_speed: 0.0
+    desired_speed: 0.28
+    max_accel: 0.35
+
+    footprint_front: 0.42
+    footprint_back: 0.42
+    footprint_half_width: 0.313
+    footprint_margin: 0.06
+
+    yaw_bins: 72
+    primitive_length: 0.34
+    integration_step: 0.08
+    max_search_time_ms: 180.0
+    max_iterations: 32000
+    goal_tolerance: 0.38
+    goal_yaw_tolerance: 1.10
+    local_goal_distance: 5.0
+
+    risk_free_threshold: 0.08
+    risk_hard_threshold: 0.62
+    unknown_cost: 80.0
+    allow_unknown: true
+    risk_weight: 3.8
+    clearance_distance: 0.75
+    clearance_weight: 3.2
+    steer_weight: 0.28
+    steer_change_weight: 0.25
+    heuristic_weight: 1.10
+    accept_partial_progress: true
+
+    replan_min_interval: 0.35
+    replan_path_remaining: 1.1
+    replan_track_error: 0.55
+    replan_goal_shift: 0.25
+    command_timeout_sec: 0.40
+
+    use_mppi: true
+    control_period: 0.05
+    mppi_dt: 0.12
+    mppi_steps: 20
+    mppi_batch_size: 240
+    mppi_speed_std: 0.10
+    mppi_steer_std: 0.13
+    mppi_path_weight: 9.0
+    mppi_heading_weight: 2.4
+    mppi_goal_weight: 1.4
+    mppi_risk_weight: 26.0
+    mppi_clearance_weight: 5.0
+    mppi_control_weight: 0.25
+    mppi_rate_weight: 0.55
+    mppi_collision_cost: 100000.0
+    mppi_lookahead_base: 0.45
+    mppi_lookahead_time: 0.65

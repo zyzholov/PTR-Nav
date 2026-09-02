@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="mars_gale">
+    <pose>0 0 0 0 0 0</pose>
+    <static>true</static>
+    <link name="terrain">
+      <collision name="terrain_collision">
+        <laser_retro>80</laser_retro>
+        <geometry>
+          <mesh>
+            <uri>model://Mars_Gale/meshes/gale_crater_collision_161.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>2.0</mu>
+              <mu2>2.0</mu2>
+              <slip1>0.001</slip1>
+              <slip2>0.002</slip2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>420000</kp>
+              <kd>75</kd>
+              <min_depth>0.002</min_depth>
+              <max_vel>0.20</max_vel>
+            </ode>
+          </contact>
+        </surface>
+      </collision>
+      <visual name="terrain_visual">
+        <pose>0 0 0.035 0 0 0</pose>
+        <cast_shadows>false</cast_shadows>
+        <geometry>
+          <mesh>
+            <uri>model://Mars_Gale/meshes/gale_crater_patch1.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://Mars_Gale/materials/scripts</uri>
+            <uri>model://Mars_Gale/materials/textures</uri>
+            <name>SandPebbles</name>
+          </script>
+          <ambient>0.55 0.42 0.31 1</ambient>
+          <diffuse>0.75 0.55 0.38 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

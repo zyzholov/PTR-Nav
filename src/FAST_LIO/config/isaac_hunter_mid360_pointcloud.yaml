@@ -1,0 +1,88 @@
+/**:
+    ros__parameters:
+        # Isaac Sim RTX LiDAR profile for Hunter SE.
+        # Isaac publishes /livox/lidar as sensor_msgs/PointCloud2, not the
+        # Livox CustomMsg used by the Gazebo Livox plugin.
+        feature_extract_enable: false
+        point_filter_num: 1
+        max_iteration: 4
+        filter_size_surf: 0.20
+        filter_size_map: 0.25
+        cube_side_length: 400.0
+        runtime_pos_log_enable: false
+        map_file_path: "./isaac_hunter_mid360_map.pcd"
+
+        common:
+            lid_topic: "/livox/lidar"
+            # /livox/imu is a compatibility alias of the external Isaac IMU.
+            # /imu/data_raw is also published by the same simulated sensor.
+            imu_topic: "/livox/imu"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+
+        preprocess:
+            # Use the generic PointCloud2 subscriber path. The enum only names
+            # 1..4; values outside that set intentionally fall back to the
+            # default PointXYZI handler in this FAST_LIO fork.
+            lidar_type: 5
+            scan_line: 128
+            scan_rate: 10
+            timestamp_unit: 3
+            # Isaac RTX PointCloud2 does not provide trustworthy per-point
+            # offset time in this bridge path. Do not synthesize a fake 100 ms
+            # scan, because FAST-LIO will over-deskew during turns/slopes.
+            synthetic_point_time: false
+            blind: 0.20
+            # Isaac RTX LiDAR can see parts of the Hunter body/sensor mount.
+            # Remove a conservative near-body box in the LiDAR frame before
+            # feeding points to FAST-LIO. This only affects the generic
+            # PointCloud2 path used by Isaac.
+            self_filter_enable: true
+            self_filter_min_x: -0.80
+            self_filter_max_x: 0.60
+            self_filter_min_y: -0.45
+            self_filter_max_y: 0.45
+            self_filter_min_z: -0.80
+            self_filter_max_z: 0.25
+
+        mapping:
+            acc_cov: 0.10
+            gyr_cov: 0.10
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 100.0
+            extrinsic_est_en: false
+            # FAST_LIO expects p_imu = R_LI * p_lidar + T_LI.
+            # Isaac mount:
+            #   base_link -> imu_link  : [0.18, 0.00, 0.205], rpy [0, 0, 0]
+            #   base_link -> livox_base: [0.18, 0.00, 0.250], rpy [0, +25deg, 0]
+            #   livox_base -> livox    : [-0.012, 0.0, 0.047]
+            extrinsic_T: [0.00899, 0.0, 0.09267]
+            extrinsic_R: [0.906307787, 0.0, 0.422618262,
+                          0.0, 1.0, 0.0,
+                          -0.422618262, 0.0, 0.906307787]
+
+        publish:
+            path_en: true
+            effect_map_en: false
+            map_en: true
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: false
+            local_map_en: true
+            local_map_radius: 80.0
+            local_map_z_half: 15.0
+
+        frame:
+            map_frame: "map"
+            body_frame: "base_link"
+            # Publish map->base_link from the FAST_LIO IMU state.
+            body_pose_T: [-0.18, 0.0, -0.205]
+            body_pose_R: [1.0, 0.0, 0.0,
+                          0.0, 1.0, 0.0,
+                          0.0, 0.0, 1.0]
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1

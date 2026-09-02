@@ -1,0 +1,182 @@
+/**:
+  ros__parameters:
+    # Hunter Gazebo + FAST-LIO live terrain planning profile.
+    # Keep the original planning.yaml unchanged for the RViz-only simulator.
+    # ESDF map removed — collision checking now uses terrain risk from fused_map.
+
+    mini_T:                   0.05
+    wei_time_:                50.0   # balanced time penalty
+
+    kmax:                     0.85    # moderate curvature limit
+    vmax:                     2.50    # max speed for planner
+    latAccmax:                2.50
+    lonAccmax:                3.00
+    accRatemax:               3.00
+    phimax:                   0.5236
+
+    traj_res:                 5
+    past:                     5
+    rho:                      1.0
+    rho_max:                  1000.0
+    gamma:                    1.0
+    mem_size:                 128
+    g_epsilon:                1.0e-3
+    min_step:                 1.0e-32
+    delta:                    1.0e-6
+    max_iterations:           38    # realtime Gazebo profile
+    amlMaxIter:               2     # keep backend bounded for live replanning
+
+    penaWei:                  1000.0
+    esdfWei:                  1.05
+    riskWei:                  1.45   # backend soft risk repulsion; front-end hard keepout still dominates
+
+    pieceTime:                0.65   # a little more spatial freedom avoids visible polygonal bends
+    miniS:                    0.1
+    safeMargin:               0.65
+    risk_safe_threshold:      0.16   # avoid over-reacting to low-risk terrain noise
+    backend/jerk_weight:      0.34   # stronger spatial smoothness in backend optimization
+    conpts_flat:              [0.34, 0.31, 0.34, -0.31, -0.34, -0.31, -0.34, 0.31]
+
+    start_vec:                [0.0, 0.0, 0.0, 0.0]
+    end_vec:                  [1.0, 0.0, 0.0, 0.0]
+    FIRI_bound:               3.0
+
+    front_end_vis:            true
+    once_vis_one:             true
+    once_duration_ms:         -1
+    once_optimization:        true
+    skip_iter_vis:            100
+    skip_iter_duration_ms:    100
+    individual_vis:           false
+
+    mapRes:                   0.2
+    mapX:                     25.0
+    mapY:                     25.0
+    expandSize:               1
+    wheel_base:               0.549   # MUST match Gazebo HunterSeKinematicDrive (0.549185)
+    horizon_:                 30.0
+    yaw_resolution_:          0.18
+    steer_res:                0.20
+    allocate_num_:            500000
+    lambda_heu_:              3.0     # balanced heuristic
+
+    check_num_:               4
+    step_arc:                 0.36
+    checkl:                   0.10
+
+    max_seach_time:           0.65    # enough front-end time to avoid tiny partial frontiers
+    non_siguav:               0.0
+    backW:                    6.0
+    isdebug:                  false
+    isfixGear:                false
+    isVis:                    false
+    enable_shot:              true
+
+    # Risk-based collision checking thresholds.
+    # The Gazebo launch widens tree risk to radius=1.55m, power=2.0.
+    # d=0.75m -> risk~0.27, d=1.0m -> risk~0.13; hard keepout covers the inner band.
+    # NOTE: the old clamp(..., 0.5, 1.0) silently raised this to 0.5 — FIXED.
+    risk_obstacle_threshold:  0.24    # risk >= 0.24 → hard obstacle
+    risk_free_threshold:      0.06    # risk < 0.06 → truly free
+
+    publish_optimized_path_visualization: false
+    publish_rough_preview:    false
+    publish_local_horizon:    false
+    local_publish_horizon_sec: 8.0
+    partial_frontier_goal_gap_thresh: 1.5
+    partial_frontier_max_length: 10.0
+    max_piece_num_per_seg:    10    # enough freedom to smooth around obstacles
+    max_piece_num_per_seg_partial: 6
+    rough_path_smoothing/passes: 2
+    rough_path_smoothing/alpha: 0.32
+    rough_path_smoothing/max_deviation: 0.28
+    rough_path_smoothing/risk_slack: 0.03
+    traj_publish_max_duration: 60.0 # publish FULL trajectory (no truncation)
+    rt/max_iterations_cap:    40    # hard cap on L-BFGS iterations
+    rt/aml_max_iter_cap:      2     # hard cap on ALM outer iterations
+
+    traj_publish_min_sdf:     0.24
+    traj_publish_sdf_tolerance: 0.012
+    traj_publish_risk_hard:   0.30
+    traj_publish_require_valid_layer: false
+    traj_publish_max_start_gap: 0.30
+    traj_publish_max_start_yaw_gap: 0.45
+    traj_safety_ignore_start_sec: 0.45
+    traj_safety_ignore_start_dist: 0.30
+    traj_safety_check_horizon_sec: 3.2
+    traj_publish_allow_partial_on_gate: false
+    traj_publish_partial_min_safe_sec: 1.1
+    traj_publish_partial_backoff_sec: 0.35
+
+    # Normal waypoint navigation should prefer a direct forward approach.
+    # Turn this on only for tight parking-style goals that truly require reverse.
+    front_end/allow_reverse:  false
+    front_end/traj_forward_penalty: 1.0
+    front_end/traj_back_penalty: 8.0
+    front_end/traj_gear_switch_penalty: 20.0
+    front_end/traj_steer_penalty: 3.0
+    front_end/traj_steer_change_penalty: 3.0
+    front_end/collision_check_num: 4
+    front_end/shot_max_dist:  20.0
+    front_end/shot_heading_gate: 1.05
+    front_end/shot_progress_step: 0.75
+    front_end/use_footprint_collision_check: true
+    front_end/footprint_safe_margin_scale: 0.48
+    front_end/footprint_edge_samples: 1
+    front_end/soft_clearance: 0.56
+    front_end/clearance_penalty: 0.65
+    front_end/risk_linear_penalty: 70.0
+    front_end/risk_soft_penalty: 280.0
+
+    odometry_topic:           /Odometry
+    vehicle/car_id:           0
+    vehicle/car_d_cr:         0.0
+
+    fsm/in_swarm:             false
+    fsm/time_budget:           0.50    # planning time budget
+    fsm/replan_retry_interval: 0.18
+    fsm/replan_lead_time:     0.22    # small delay compensation without large start-anchor jumps
+    fsm/replan_retry_backoff_max: 0.55
+    fsm/replan_cooldown:      0.45
+    fsm/exec_min_dwell:       0.30
+    fsm/continuous_replan_enable: true
+    fsm/continuous_replan_hz: 2.0     # event watchdog; does not refresh unless near-end/hazard/expired
+    fsm/safety_check_period_ms: 80
+    fsm/collision_replan_hits: 1
+    fsm/collision_check_lookahead_sec: 4.50
+    fsm/collision_replan_min_elapsed: 0.18
+    fsm/collision_near_horizon_sec: 1.25
+    fsm/collision_preemptive_cooldown: 0.28
+    fsm/collision_replan_margin: 0.06
+    fsm/enable_end_of_traj_replan: true
+    fsm/traj_expired_replan_margin: 0.00
+    fsm/preemptive_replan_time: 2.40
+    fsm/end_replan_goal_dist: 1.20
+    fsm/track_err_replan_enable: false
+    fsm/track_err_replan_dist: 2.60
+    fsm/track_err_replan_yaw:  1.25
+    fsm/track_err_replan_min_elapsed: 2.50
+    fsm/track_err_replan_hits: 5
+    fsm/track_err_replan_hysteresis: 0.10
+    fsm/risk_replan_threshold: 0.24
+    fsm/risk_replan_hits: 1
+    fsm/replan_anchor_max_dist: 0.35
+    fsm/replan_anchor_max_yaw: 0.60
+    fsm/use_predictive_replan_anchor: true
+    fsm/snap_start_to_free_enable: false
+    fsm/start_rescue_enable: false
+    fsm/start_rescue_trigger_risk: 0.24
+    fsm/start_rescue_target_risk: 0.20
+    fsm/start_rescue_max_radius: 0.90
+    fsm/start_rescue_radius_step: 0.10
+    fsm/start_rescue_angle_step_deg: 10.0
+    fsm/collision_eval_track_err_max: 1.15
+    fsm/goal_projection_max_radius: 2.5
+    fsm/goal_projection_radius_step: 0.25
+    fsm/goal_projection_angle_step_deg: 15.0
+    fsm/goal_projection_min_sdf: 0.22
+    fsm/goal_projection_max_risk: 0.90
+    fsm/duplicate_goal_dist: 0.25
+    fsm/duplicate_goal_window: 0.35
+    fsm/active_goal_replace_dist: 0.50
+    fsm/active_goal_replace_yaw: 0.60

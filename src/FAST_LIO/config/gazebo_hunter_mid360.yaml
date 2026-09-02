@@ -1,0 +1,71 @@
+/**:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 1
+        max_iteration: 4
+        filter_size_surf: 0.15
+        filter_size_map: 0.15
+        cube_side_length: 400.0
+        runtime_pos_log_enable: false
+        map_file_path: "./gazebo_hunter_mid360_map.pcd"
+
+        common:
+            lid_topic: "/livox/lidar"
+            imu_topic: "/livox/imu"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+
+        preprocess:
+            # Hunter SE Gazebo publishes Livox MID360 data as CustomMsg on /livox/lidar.
+            lidar_type: 1
+            scan_line: 4
+            scan_rate: 10
+            timestamp_unit: 3
+            # Keep only a small near-field blind zone. Vehicle-body returns are
+            # removed in the Livox Gazebo plugin, so this no longer needs to
+            # create a large circular hole around the robot.
+            blind: 0.12
+
+        mapping:
+            acc_cov: 0.08
+            gyr_cov: 0.08
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 80.0
+            extrinsic_est_en: false
+            # FAST_LIO expects p_imu = R_LI * p_lidar + T_LI.
+            # Hunter Gazebo mount:
+            #   base_link -> imu_link  : [0.18, 0.12, 0.250], rpy [0, 0, 0]
+            #   base_link -> livox_base: [0.18, 0.00, 0.250], rpy [0, +25deg, 0]
+            #   livox_base -> livox    : [-0.012, 0.0, 0.047]
+            # Thus base_link -> livox is approximately [0.189, 0.0, 0.298],
+            # and livox is pitched forward/down by 25deg relative to imu_link.
+            extrinsic_T: [0.00899, -0.12, 0.04767]
+            extrinsic_R: [0.906307787, 0.0, 0.422618262,
+                          0.0, 1.0, 0.0,
+                          -0.422618262, 0.0, 0.906307787]
+
+        publish:
+            path_en: true
+            effect_map_en: false
+            map_en: false
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: false
+            local_map_en: true
+            local_map_radius: 35.0
+            local_map_z_half: 5.0
+
+        frame:
+            map_frame: "map"
+            body_frame: "base_link"
+            # Publish map->base_link by applying the fixed imu->base transform.
+            body_pose_T: [-0.18, -0.12, -0.25]
+            body_pose_R: [1.0, 0.0, 0.0,
+                          0.0, 1.0, 0.0,
+                          0.0, 0.0, 1.0]
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1

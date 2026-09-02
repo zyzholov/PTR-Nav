@@ -1,0 +1,138 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="terrain_boxes_world">
+    <gravity>0 0 -9.81</gravity>
+    <physics name="ode_stable" type="ode">
+      <real_time_update_rate>500.0</real_time_update_rate>
+      <max_step_size>0.002</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>40</iters>
+          <sor>1.3</sor>
+          <use_dynamic_moi_rescaling>true</use_dynamic_moi_rescaling>
+        </solver>
+        <constraints>
+          <cfm>0.0</cfm>
+          <erp>0.2</erp>
+          <contact_max_correcting_vel>2.0</contact_max_correcting_vel>
+          <contact_surface_layer>0.001</contact_surface_layer>
+        </constraints>
+      </ode>
+    </physics>
+
+    <gui fullscreen="0">
+      <camera name="startup_camera">
+        <!-- Focus startup camera on default vehicle spawn area (x=1.8, y=0.0). -->
+        <pose>4.2 -2.6 2.1 0 0.40 2.27</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <model name="box_obstacle_1">
+      <static>true</static>
+      <pose>4 0 0.6 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>1.0 1.0 1.2</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>1.0 1.0 1.2</size></box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.4 0.4 1</ambient>
+            <diffuse>0.6 0.4 0.4 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="box_obstacle_2">
+      <static>true</static>
+      <pose>-3.5 -2.0 0.5 0 0 0.35</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>1.6 0.8 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>1.6 0.8 1.0</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.6 0.4 1</ambient>
+            <diffuse>0.4 0.6 0.4 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="slope_platform">
+      <static>true</static>
+      <pose>0 5 0.25 0.20 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>6.0 4.0 0.5</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>6.0 4.0 0.5</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.6 1</ambient>
+            <diffuse>0.4 0.4 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <population name="pine_tree_front_population">
+      <model name="pine_tree_front">
+        <include>
+          <static>true</static>
+          <uri>model://pine_tree</uri>
+        </include>
+      </model>
+      <pose>12 0 0 0 0 0</pose>
+      <box>
+        <size>24 18 0.01</size>
+      </box>
+      <model_count>18</model_count>
+      <distribution>
+        <type>random</type>
+      </distribution>
+    </population>
+
+    <population name="pine_tree_wide_population">
+      <model name="pine_tree_wide">
+        <include>
+          <static>true</static>
+          <uri>model://pine_tree</uri>
+        </include>
+      </model>
+      <pose>3 16 0 0 0 0</pose>
+      <box>
+        <size>32 18 0.01</size>
+      </box>
+      <model_count>14</model_count>
+      <distribution>
+        <type>random</type>
+      </distribution>
+    </population>
+  </world>
+</sdf>

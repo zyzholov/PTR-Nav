@@ -1,0 +1,41 @@
+/**:
+  ros__parameters:
+    # Real NEOS chassis driver consumes Twist.angular.z as steering angle.
+    mpc/cmd_is_yaw_rate: false
+
+    mpc/dt: 0.10
+    mpc/predict_steps: 10
+    mpc/max_steer: 0.31
+    mpc/max_dsteer: 0.80
+    mpc/max_speed: 0.35
+    mpc/min_speed: 0.00
+    mpc/reverse_speed_cap: 0.08
+    mpc/max_accel: 0.35
+    mpc/wheel_base: 0.535
+    mpc/delay_num: 1
+    mpc/test_mpc: false
+
+    mpc/enable_fallback_goal: false
+    mpc/fallback_block_after_planner_sec: 3.0
+    mpc/enable_aggressive_recovery: false
+    mpc/force_reverse_follow: false
+    mpc/reverse_follow_speed_floor: 0.08
+    mpc/reverse_hint_hold_sec: 2.0
+
+    mpc/planner_update_min_interval_sec: 0.10
+    mpc/planner_update_max_jump_m: 0.7
+    mpc/replan_cautious_sec: 0.50
+    mpc/replan_cautious_speed_cap: 0.16
+    mpc/replan_cautious_dist_thresh: 0.45
+    mpc/replan_cautious_yaw_thresh: 0.50
+    mpc/replan_cautious_steer_thresh: 0.22
+    mpc/continuous_replan_mode: false
+    mpc/cmd_speed_scale: 1.00
+    mpc/turn_speed_steer_gain: 0.55
+    mpc/turn_speed_min_cap: 0.10
+    mpc/ref_projection_period_sec: 0.08
+    mpc/control_visualization_period_sec: 0.50
+
+    mpc/matrix_q: [100.0, 100.0, 10.0]
+    mpc/matrix_r: [0.12, 0.02]
+    mpc/matrix_rd: [10.0, 28.0]

@@ -1,0 +1,29 @@
+material FireStation/Diffuse
+{
+  receive_shadows off
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture fire_station_diffuse.png
+      }
+    }
+  }
+}
+
+material FireStation/Specular
+{
+  receive_shadows off
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture fire_station_spec.png
+      }
+    }
+  }
+}

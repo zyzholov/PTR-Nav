@@ -1,0 +1,993 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version="1.6">
+  <model name="rubicon">
+    <static>true</static>
+    <link name="fog_link">
+      <pose>0 0 3 0 -1.5707 0</pose>
+      <particle_emitter name="emitter" type="box">
+        <emitting>false</emitting>
+        <size>75 75 0</size>
+        <particle_size>10 10 10</particle_size>
+        <lifetime>20</lifetime>
+        <min_velocity>0.1</min_velocity>
+        <max_velocity>0.2</max_velocity>
+        <scale_rate>0.35</scale_rate>
+        <rate>5</rate>
+        <material>
+          <diffuse>0.7 0.7 0.7</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/fog.png</albedo_map>
+            </metal>
+          </pbr>
+        </material>
+        <color_range_image>model://rubicon/materials/textures/fogcolors.png</color_range_image>
+      </particle_emitter>
+    </link>
+    <link name="light">
+      <light type="directional" name="sun">
+        <cast_shadows>true</cast_shadows>
+        <pose>0 0 10 0 0 0</pose>
+        <diffuse>0.8 0.8 0.8 1</diffuse>
+        <specular>0.0 0.0 0.0 1</specular>
+        <intensity>1.2</intensity>
+        <attenuation>
+          <range>1000</range>
+          <constant>0.9</constant>
+          <linear>0.01</linear>
+          <quadratic>0.001</quadratic>
+        </attenuation>
+        <direction>-0.5 0.1 -0.9</direction>
+      </light>
+    </link>
+    <link name="base_link">
+      <collision name="Cylinder036">
+        <pose>-1.15364 -12.9488 5.39065 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0985286</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder035">
+        <pose>-0.111711 -12.2421 5.40861 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0923705</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder034">
+        <pose>-0.02396 -11.613 5.4961 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0923705</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder033">
+        <pose>2.19946 -6.83935 5.20864 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.10459</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder032">
+        <pose>2.66779 -6.25357 3.85947 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.110845</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder031">
+        <pose>2.33936 -9.79112 6.26124 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.166267</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder030">
+        <pose>2.45426 -9.12691 4.43294 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.110845</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder029">
+        <pose>1.41421 -8.10594 4.8123 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.135477</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder028">
+        <pose>2.3769 -7.66565 4.71018 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.123161</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder027">
+        <pose>2.21962 -10.5836 4.74416 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.147793</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder026">
+        <pose>1.14553 -10.5014 5.7871 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.104687</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder025">
+        <pose>5.93933 -15.2812 4.49235 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0985286</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder023">
+        <pose>7.3282 -16.1488 4.27651 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.123161</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder022">
+        <pose>7.86817 -13.8719 5.09747 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.104687</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder021">
+        <pose>11.2267 -9.90621 4.79594 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0985286</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder020">
+        <pose>13.9961 -9.30697 3.56927 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0985286</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder019">
+        <pose>11.957 -9.67392 4.73143 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.141635</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder018">
+        <pose>-8.33534 -17.2746 4.39645 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0800545</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder017">
+        <pose>-8.09959 -16.5865 4.37207 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0800545</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder016">
+        <pose>-9.2693 -16.6093 4.44469 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0800545</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder015">
+        <pose>-13.5987 1.38706 6.00725 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0906463</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder014">
+        <pose>12.3829 -13.3294 4.72702 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0800545</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder013">
+        <pose>10.9303 -11.9306 6.16489 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.120821</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder012">
+        <pose>11.9102 -13.0336 4.60462 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.206787</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder011">
+        <pose>13.7041 10.4609 3.42199 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.117003</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder010">
+        <pose>-13.8438 -11.0701 6.21278 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0923705</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder009">
+        <pose>-14.7257 -6.36705 8.46509 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.209373</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder008">
+        <pose>-15.2735 -2.47418 5.90907 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.160109</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder007">
+        <pose>-15.2389 -9.1677 7.78426 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0923705</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder006">
+        <pose>-13.6225 -8.95256 7.80397 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.129319</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder005">
+        <pose>-11.9913 -9.97368 7.78971 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.104687</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder004">
+        <pose>-11.1574 -7.4302 6.98663 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.0923705</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder003">
+        <pose>-15.5565 -0.0830176 6.26843 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.110845</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="Cylinder002">
+        <pose>-15.5077 -5.04303 6.74536 0.0 0.0 0.0</pose>
+        <geometry>
+          <cylinder>
+            <length>12</length>
+            <radius>.160109</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+      <collision name="RockPile_collision">
+        <laser_retro>80</laser_retro>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/collider_rockpile.dae</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name="Rock01_collision">
+        <laser_retro>80</laser_retro>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/collider_rock01.dae</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name="Rock02_collision">
+        <laser_retro>80</laser_retro>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/collider_rock02.dae</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name="Stump_collision">
+        <laser_retro>80</laser_retro>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/collider_stump.dae</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      OK
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <collision name="boundary">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/collider_boundary.dae</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name="RockPile_visual">
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>RockPile</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/RockPile_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/RockPile_Normal.png</normal_map>
+              <roughness_map>model://rubicon/materials/textures/RockPile_Roughness.png</roughness_map>
+              <metalness>0</metalness>
+            </metal>
+          </pbr>
+          <!-- fallback to script if no PBR support-->
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/RockPile_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Bush_visual">
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>Bush</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Bush01_Albedo.png</albedo_map>
+              <roughness>0.9</roughness>
+              <metalness>0</metalness>
+            </metal>
+          </pbr>
+          <!-- fallback to script if no PBR support-->
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Bush01_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Rock01_visual">
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>Rock01</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Rock01_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/Rock01_Normal.png</normal_map>
+              <roughness_map>model://rubicon/materials/textures/Rock01_Roughness.png</roughness_map>
+              <metalness>0</metalness>
+            </metal>
+          </pbr>
+          <!-- fallback to script if no PBR support-->
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Rock01_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Rock02_visual">
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>Rock02</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Rock02_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/Rock02_Normal.png</normal_map>
+              <roughness_map>model://rubicon/materials/textures/Rock02_Roughness.png</roughness_map>
+              <metalness>0</metalness>
+            </metal>
+          </pbr>
+          <!-- fallback to script if no PBR support-->
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Rock02_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="JeffreyTreeLeaves_visual">
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>JeffreyTreeLeaves</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/TreeJeffreyPine_Albedo.png</albedo_map>
+              <roughness>0.9</roughness>
+              <metalness>0</metalness>
+            </metal>
+          </pbr>
+          <!-- fallback to script if no PBR support-->
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/TreeJeffreyPine_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="JeffreyTreeBark_visual">
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>JeffreyTreeBark</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Bark_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/Bark_Normal.png</normal_map>
+              <roughness>0.9</roughness>
+              <metalness>0</metalness>
+              <!-- <light_map uv_set="1">model://rubicon/materials/textures/LightmapDark.png</light_map> -->
+            </metal>
+          </pbr>
+          <!-- fallback to script if no PBR support-->
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Bark_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Vista">
+        <cast_shadows>false</cast_shadows>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>Vista</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Vista_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/Vista_Normal.png</normal_map>
+              <!--<emissive_map>model://rubicon/materials/textures/Vista_Albedo.png</emissive_map>-->
+              <metalness>0</metalness>
+              <roughness>1</roughness>
+            </metal>
+          </pbr>
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Vista_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Stump">
+        <cast_shadows>false</cast_shadows>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>Stump</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Stump_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/Stump_Normal.png</normal_map>
+              <metalness>0</metalness>
+              <roughness>1</roughness>
+            </metal>
+          </pbr>
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Stump_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Roots">
+        <cast_shadows>false</cast_shadows>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>Roots</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Roots_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/Roots_Normal.png</normal_map>
+              <metalness>0</metalness>
+              <roughness>1</roughness>
+            </metal>
+          </pbr>
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Roots_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Log">
+        <cast_shadows>false</cast_shadows>
+        <geometry>
+          <mesh>
+            <uri>model://rubicon/meshes/rubicon.dae</uri>
+            <scale>1 1 1</scale>
+            <submesh>
+              <name>Log</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/Log_Albedo.png</albedo_map>
+              <normal_map>model://rubicon/materials/textures/Log_Normal.png</normal_map>
+              <metalness>0</metalness>
+              <roughness>1</roughness>
+            </metal>
+          </pbr>
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Log_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+      <visual name="Randy_visual">
+        <pose>15.70 -0.016 3.4752 0 0 -1.086</pose>
+        <geometry>
+          <mesh>
+            <scale>.01 .01 .01</scale>
+            <uri>model://rubicon/meshes/skier.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1 1 1</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/RescueRandy_Diffuse.png</albedo_map>
+              <metalness>0</metalness>
+              <roughness>1</roughness>
+            </metal>
+          </pbr>
+          <script>
+            <uri>model://rubicon/materials/scripts/</uri>
+            <uri>model://rubicon/materials/textures/</uri>
+            <name>UrbanTile/Randy_Diffuse</name>
+          </script>
+        </material>
+      </visual>
+    </link>
+    <link name="snow_link">
+      <pose>0 0 20 0 1.5707 0</pose>
+      <particle_emitter name="snow_emitter" type="box">
+        <emitting>false</emitting>
+        <size>20 20 0</size>
+        <particle_size>0.1 0.1 0.1</particle_size>
+        <lifetime>10</lifetime>
+        <min_velocity>2</min_velocity>
+        <max_velocity>4</max_velocity>
+        <scale_rate>0</scale_rate>
+        <rate>200</rate>
+        <material>
+          <diffuse>0.7 0.7 0.7</diffuse>
+          <specular>1.0 1.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://rubicon/materials/textures/snowflake.png</albedo_map>
+            </metal>
+          </pbr>
+        </material>
+      </particle_emitter>
+    </link>
+    <link name="heightmap">
+      <collision name="heightmap_collision">
+        <geometry>
+          <heightmap>
+            <uri>model://rubicon/materials/textures/Heightmap.png</uri>
+            <size>37.5 37.5 5</size>
+            <pos>0 0 0</pos>
+          </heightmap>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>2.5</mu>
+              <mu2>2.5</mu2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1000000</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+              <max_vel>0.2</max_vel>
+            </ode>
+          </contact>
+        </surface>
+      </collision>
+      <visual name="heightmap_visual">
+        <geometry>
+          <heightmap>
+            <use_terrain_paging>false</use_terrain_paging>
+            <texture>
+              <diffuse>model://rubicon/materials/textures/TerrainRocky_Albedo.png</diffuse>
+              <normal>model://rubicon/materials/textures/TerrainRocky_Normal.png</normal>
+              <size>10</size>
+            </texture>
+            <uri>model://rubicon/materials/textures/Heightmap.png</uri>
+            <size>37.5 37.5 5</size>
+            <pos>0 0 0</pos>
+          </heightmap>
+        </geometry>
+      </visual>
+    </link>
+  </model>
+</sdf>

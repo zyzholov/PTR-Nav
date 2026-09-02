@@ -1,0 +1,205 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="hunter_se_gazebo_plugins" params="ns:='hunter_se' drive_mode:='hunter_joint'">
+    <xacro:property name="use_hunter_joint_drive" value="${drive_mode == 'hunter_joint' or drive_mode == 'hunter_kinematic'}" />
+    <xacro:property name="use_ackermann_drive" value="${drive_mode == 'ackermann'}" />
+    <xacro:property name="use_planar_visual_drive" value="${drive_mode == 'planar_visual'}" />
+    <gazebo reference="base_link">
+      <mu1>1.0</mu1>
+      <mu2>1.0</mu2>
+      <kp>500000.0</kp>
+      <kd>50.0</kd>
+      <material>Gazebo/Grey</material>
+    </gazebo>
+
+    <gazebo reference="fr_left_link">
+      <mu1>3.2</mu1>
+      <mu2>3.2</mu2>
+      <kp>520000.0</kp>
+      <kd>80.0</kd>
+      <minDepth>0.002</minDepth>
+      <maxVel>0.06</maxVel>
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+    <gazebo reference="fr_right_link">
+      <mu1>3.2</mu1>
+      <mu2>3.2</mu2>
+      <kp>520000.0</kp>
+      <kd>80.0</kd>
+      <minDepth>0.002</minDepth>
+      <maxVel>0.06</maxVel>
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+    <gazebo reference="re_left_link">
+      <mu1>3.2</mu1>
+      <mu2>3.2</mu2>
+      <kp>520000.0</kp>
+      <kd>80.0</kd>
+      <minDepth>0.002</minDepth>
+      <maxVel>0.06</maxVel>
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+    <gazebo reference="re_right_link">
+      <mu1>3.2</mu1>
+      <mu2>3.2</mu2>
+      <kp>520000.0</kp>
+      <kd>80.0</kd>
+      <minDepth>0.002</minDepth>
+      <maxVel>0.06</maxVel>
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+    <xacro:if value="${use_hunter_joint_drive}">
+      <gazebo>
+        <plugin name="${ns}_hunter_joint_drive" filename="libhunter_se_kinematic_drive.so">
+          <ros>
+            <namespace>/${ns}</namespace>
+            <remapping>cmd_vel:=cmd_vel</remapping>
+            <remapping>odom:=wheel_odom</remapping>
+          </ros>
+
+          <update_rate>100.0</update_rate>
+          <publish_rate>50.0</publish_rate>
+          <publish_odom_tf>false</publish_odom_tf>
+          <odometry_frame>odom</odometry_frame>
+          <robot_base_frame>base_link</robot_base_frame>
+
+          <left_steering_joint>fr_steer_left_joint</left_steering_joint>
+          <right_steering_joint>fr_steer_right_joint</right_steering_joint>
+          <steering_wheel_joint>steering_whee_joint</steering_wheel_joint>
+          <front_left_joint>fr_left_joint</front_left_joint>
+          <front_right_joint>fr_right_joint</front_right_joint>
+          <rear_left_joint>re_left_joint</rear_left_joint>
+          <rear_right_joint>re_right_joint</rear_right_joint>
+
+          <wheel_base>0.549185</wheel_base>
+          <track_width>0.50</track_width>
+          <wheel_radius>0.1349</wheel_radius>
+          <max_speed>3.0</max_speed>
+          <max_accel>3.2</max_accel>
+          <max_steer>0.5236</max_steer>
+          <max_wheel_steer>0.69</max_wheel_steer>
+          <max_steer_rate>4.0</max_steer_rate>
+          <cmd_timeout>1.50</cmd_timeout>
+          <steering_wheel_ratio>4.0</steering_wheel_ratio>
+          <steering_position_kp>120.0</steering_position_kp>
+          <steering_position_kd>8.0</steering_position_kd>
+          <steering_velocity_limit>3.5</steering_velocity_limit>
+          <steering_motor_effort>220.0</steering_motor_effort>
+          <steering_wheel_position_kp>6.0</steering_wheel_position_kp>
+          <wheel_velocity_kp>75.0</wheel_velocity_kp>
+          <wheel_motor_effort>220.0</wheel_motor_effort>
+          <front_wheel_drive_scale>1.0</front_wheel_drive_scale>
+          <steering_deadband>0.01</steering_deadband>
+          <idle_hold_enable>true</idle_hold_enable>
+          <idle_hold_cmd_speed_threshold>0.025</idle_hold_cmd_speed_threshold>
+          <idle_hold_cmd_steer_threshold>0.025</idle_hold_cmd_steer_threshold>
+          <idle_hold_linear_speed_threshold>0.055</idle_hold_linear_speed_threshold>
+          <idle_hold_yaw_rate_threshold>0.050</idle_hold_yaw_rate_threshold>
+          <idle_hold_linear_damping>55.0</idle_hold_linear_damping>
+          <idle_hold_yaw_damping>35.0</idle_hold_yaw_damping>
+          <idle_hold_wheel_brake_kp>28.0</idle_hold_wheel_brake_kp>
+          <idle_hold_wheel_brake_effort>150.0</idle_hold_wheel_brake_effort>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+    <xacro:if value="${use_ackermann_drive}">
+      <gazebo>
+        <plugin name="${ns}_ackermann_drive" filename="libgazebo_ros_ackermann_drive.so">
+          <ros>
+            <namespace>/${ns}</namespace>
+            <remapping>cmd_vel:=cmd_vel</remapping>
+            <remapping>odom:=wheel_odom</remapping>
+            <remapping>steerangle:=steer_angle</remapping>
+          </ros>
+
+          <update_rate>100.0</update_rate>
+
+          <front_left_joint>fr_left_joint</front_left_joint>
+          <front_right_joint>fr_right_joint</front_right_joint>
+          <rear_left_joint>re_left_joint</rear_left_joint>
+          <rear_right_joint>re_right_joint</rear_right_joint>
+          <left_steering_joint>fr_steer_left_joint</left_steering_joint>
+          <right_steering_joint>fr_steer_right_joint</right_steering_joint>
+          <steering_wheel_joint>steering_whee_joint</steering_wheel_joint>
+
+          <wheel_base>0.549185</wheel_base>
+          <wheel_separation>0.4980</wheel_separation>
+          <wheel_radius>0.1349</wheel_radius>
+          <max_steer>0.5235987756</max_steer>
+          <max_steering_angle>2.1</max_steering_angle>
+          <max_speed>1.50</max_speed>
+          <max_linear_acceleration>1.00</max_linear_acceleration>
+          <max_linear_deceleration>1.50</max_linear_deceleration>
+          <max_wheel_torque>120.0</max_wheel_torque>
+          <max_wheel_acceleration>20.0</max_wheel_acceleration>
+          <max_steering_angle_velocity>1.50</max_steering_angle_velocity>
+
+          <left_steering_pid_gain>1500 0 1</left_steering_pid_gain>
+          <left_steering_i_range>0 0</left_steering_i_range>
+          <right_steering_pid_gain>1500 0 1</right_steering_pid_gain>
+          <right_steering_i_range>0 0</right_steering_i_range>
+          <linear_velocity_pid_gain>2000 0 5</linear_velocity_pid_gain>
+          <linear_velocity_i_range>0 0</linear_velocity_i_range>
+
+          <publish_odom>true</publish_odom>
+          <publish_odom_tf>false</publish_odom_tf>
+          <publish_wheel_tf>false</publish_wheel_tf>
+          <publish_distance>false</publish_distance>
+          <publish_steerangle>true</publish_steerangle>
+          <odometry_frame>odom</odometry_frame>
+          <robot_base_frame>base_link</robot_base_frame>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+    <xacro:if value="${use_planar_visual_drive}">
+      <gazebo>
+        <plugin name="${ns}_visual_steering" filename="libhunter_se_visual_steering.so">
+          <ros>
+            <namespace>/${ns}</namespace>
+            <remapping>cmd_vel:=cmd_vel</remapping>
+          </ros>
+
+          <update_rate>100.0</update_rate>
+          <left_steering_joint>fr_steer_left_joint</left_steering_joint>
+          <right_steering_joint>fr_steer_right_joint</right_steering_joint>
+          <steering_wheel_joint>steering_whee_joint</steering_wheel_joint>
+          <wheel_base>0.549185</wheel_base>
+          <max_visual_steer>0.58</max_visual_steer>
+          <max_steer_rate>10.0</max_steer_rate>
+          <cmd_timeout>0.35</cmd_timeout>
+          <steering_wheel_ratio>4.0</steering_wheel_ratio>
+          <low_speed_reference_yaw_rate>1.20</low_speed_reference_yaw_rate>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+    <xacro:unless value="${use_hunter_joint_drive or use_ackermann_drive}">
+      <gazebo>
+        <plugin name="${ns}_planar_move" filename="libgazebo_ros_planar_move.so">
+          <ros>
+            <namespace>/${ns}</namespace>
+            <remapping>cmd_vel:=cmd_vel</remapping>
+            <remapping>odom:=wheel_odom</remapping>
+          </ros>
+
+          <update_rate>100.0</update_rate>
+          <publish_rate>50.0</publish_rate>
+          <publish_odom>true</publish_odom>
+          <publish_odom_tf>false</publish_odom_tf>
+          <odometry_frame>odom</odometry_frame>
+          <robot_base_frame>base_link</robot_base_frame>
+          <covariance_x>0.0001</covariance_x>
+          <covariance_y>0.0001</covariance_y>
+          <covariance_yaw>0.001</covariance_yaw>
+        </plugin>
+      </gazebo>
+    </xacro:unless>
+
+  </xacro:macro>
+</robot>

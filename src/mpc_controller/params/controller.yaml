@@ -1,0 +1,23 @@
+/**:
+  ros__parameters:
+    mpc/dt: 0.1
+    mpc/predict_steps: 10
+    mpc/max_steer: 0.48
+    mpc/max_dsteer: 0.45
+    mpc/max_speed: 0.8
+    mpc/min_speed: -0.3
+    mpc/reverse_speed_cap: 0.2
+    mpc/max_accel: 0.8
+    mpc/cmd_speed_scale: 2.2
+    mpc/turn_speed_steer_gain: 0.55
+    mpc/turn_speed_min_cap: 0.12
+    mpc/planner_update_min_interval_sec: 0.25
+    mpc/planner_update_max_jump_m: 4.0
+    mpc/wheel_base: 0.7
+    mpc/delay_num: 0
+    # Keep enabled so vehicle reacts immediately while planner optimization is still running.
+    mpc/test_mpc: true
+    mpc/matrix_q: [100.0, 100.0, 10.0]
+    mpc/matrix_r: [0.1, 0.01]
+    mpc/fallback_block_after_planner_sec: 0.25
+    mpc/matrix_rd: [18.0, 35.0]

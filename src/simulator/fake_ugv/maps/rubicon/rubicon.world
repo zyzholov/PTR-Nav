@@ -1,0 +1,58 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="rubicon_world">
+    <gravity>0 0 -9.81</gravity>
+    <physics name="ode_stable" type="ode">
+      <real_time_update_rate>400.0</real_time_update_rate>
+      <max_step_size>0.0025</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>40</iters>
+          <sor>1.3</sor>
+          <use_dynamic_moi_rescaling>true</use_dynamic_moi_rescaling>
+        </solver>
+        <constraints>
+          <cfm>0.0</cfm>
+          <erp>0.2</erp>
+          <contact_max_correcting_vel>2.0</contact_max_correcting_vel>
+          <contact_surface_layer>0.001</contact_surface_layer>
+        </constraints>
+      </ode>
+    </physics>
+
+    <gui fullscreen="0">
+      <camera name="startup_camera">
+        <pose>8 -12 6 0 0.45 2.0</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+    <scene>
+      <sky>
+        <clouds>
+          <speed>10</speed>
+        </clouds>
+      </sky>
+      <ambient>0.6 0.6 0.6 1</ambient>
+      <background>0.5 0.6 0.7 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <!-- Rubicon terrain model -->
+    <include>
+      <static>true</static>
+      <name>rubicon_challenge</name>
+      <pose>0 0 0 0 0 0</pose>
+      <uri>model://rubicon</uri>
+    </include>
+
+    <!-- Global sun (supplement model light) -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+  </world>
+</sdf>

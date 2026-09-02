@@ -1,0 +1,159 @@
+/**:
+  ros__parameters:
+    # Real NEOS Ackermann planning profile.
+    # Chassis facts confirmed by user:
+    # - wheel_base = 0.535 m from hexman xpkg_vehicle NEOS device_id_list.ini
+    # - /cmd_vel.angular.z is steering angle, not yaw rate
+    # - vehicle footprint = 0.840 x 0.626 m
+
+    mini_T:                   0.05
+    wei_time_:                10.0
+
+    kmax:                     0.60
+    vmax:                     0.35
+    latAccmax:                0.15
+    lonAccmax:                0.35
+    accRatemax:               0.50
+    phimax:                   0.31
+
+    traj_res:                 6
+    past:                     7
+    rho:                      1.0
+    rho_max:                  1000.0
+    gamma:                    1.0
+    mem_size:                 256
+    g_epsilon:                1.0e-3
+    min_step:                 1.0e-32
+    delta:                    1.0e-6
+    max_iterations:           60
+    amlMaxIter:               3
+
+    penaWei:                  1000.0
+    esdfWei:                  1.10
+
+    pieceTime:                1.20
+    miniS:                    0.1
+    safeMargin:               0.55
+    # Assumes base_link is at vehicle geometric center.
+    conpts_flat:              [0.42, 0.313, 0.42, -0.313, -0.42, -0.313, -0.42, 0.313]
+
+    start_vec:                [0.0, 0.0, 0.0, 0.0]
+    end_vec:                  [1.0, 0.0, 0.0, 0.0]
+    FIRI_bound:               3.0
+
+    front_end_vis:            true
+    once_vis_one:             true
+    once_duration_ms:         -1
+    once_optimization:        true
+    skip_iter_vis:            100
+    skip_iter_duration_ms:    100
+    individual_vis:           false
+
+    mapRes:                   0.2
+    mapX:                     25.0
+    mapY:                     25.0
+    expandSize:               1
+    wheel_base:               0.535
+    horizon_:                 7.0
+    yaw_resolution_:          0.18
+    steer_res:                0.16
+    allocate_num_:            320000
+    lambda_heu_:              1.0
+
+    check_num_:               4
+    step_arc:                 0.30
+    checkl:                   0.10
+
+    max_seach_time:           0.50
+    non_siguav:               0.0
+    backW:                    8.0
+    isdebug:                  false
+    isfixGear:                false
+    isVis:                    false
+    enable_shot:              true
+
+    publish_rough_preview:    false
+    publish_local_horizon:    true
+    local_publish_horizon_sec: 8.0
+    traj_republish_hz:        0.0
+    partial_frontier_goal_gap_thresh: 1.5
+    partial_frontier_max_length: 10.0
+    max_piece_num_per_seg:    6
+    max_piece_num_per_seg_partial: 4
+    rough_path_smoothing/passes: 2
+    rough_path_smoothing/alpha: 0.28
+    rough_path_smoothing/max_deviation: 0.22
+    rough_path_smoothing/risk_slack: 0.02
+    rt/max_iterations_cap:    60
+    rt/aml_max_iter_cap:      3
+
+    traj_publish_min_sdf:     0.30
+    traj_publish_sdf_tolerance: 0.012
+    traj_publish_risk_hard:   0.88
+    traj_publish_require_valid_layer: false
+    traj_safety_ignore_start_sec: 0.45
+    traj_safety_ignore_start_dist: 0.30
+    traj_safety_check_horizon_sec: 3.0
+    traj_publish_allow_partial_on_gate: true
+    traj_publish_partial_min_safe_sec: 1.0
+    traj_publish_partial_backoff_sec: 0.35
+
+    front_end/allow_reverse:  false
+    front_end/traj_forward_penalty: 1.0
+    front_end/traj_back_penalty: 4.0
+    front_end/traj_gear_switch_penalty: 18.0
+    front_end/traj_steer_penalty: 0.85
+    front_end/traj_steer_change_penalty: 1.00
+    front_end/collision_check_num: 3
+    front_end/use_footprint_collision_check: true
+    front_end/footprint_safe_margin_scale: 0.60
+    front_end/footprint_edge_samples: 1
+    front_end/soft_clearance: 0.65
+    front_end/clearance_penalty: 0.75
+    front_end/risk_linear_penalty: 60.0
+    front_end/risk_soft_penalty:   220.0
+
+    odometry_topic:           /Odometry
+    vehicle/car_id:           0
+    vehicle/car_d_cr:         0.0
+
+    fsm/in_swarm:             false
+    fsm/time_budget:           0.35
+    fsm/replan_retry_interval: 0.10
+    fsm/replan_lead_time:     0.12
+    fsm/replan_retry_backoff_max: 0.70
+    fsm/replan_cooldown:      0.15
+    fsm/exec_min_dwell:       0.15
+    fsm/collision_replan_hits: 6
+    fsm/collision_check_lookahead_sec: 2.20
+    fsm/collision_replan_margin: 0.08
+    fsm/collision_replan_min_elapsed: 0.18
+    fsm/collision_near_horizon_sec: 0.95
+    fsm/collision_preemptive_cooldown: 0.22
+    fsm/enable_end_of_traj_replan: true
+    fsm/traj_expired_replan_margin: 0.00
+    fsm/preemptive_replan_time: 1.10
+    fsm/end_replan_goal_dist: 1.00
+    fsm/continuous_replan_enable: true
+    fsm/continuous_replan_hz: 2.0
+    fsm/safety_check_period_ms: 80
+    fsm/track_err_replan_dist: 0.75
+    fsm/track_err_replan_yaw: 0.90
+    fsm/track_err_replan_min_elapsed: 0.80
+    fsm/track_err_replan_hits: 2
+    fsm/track_err_replan_hysteresis: 0.10
+    fsm/replan_anchor_max_dist: 0.65
+    fsm/replan_anchor_max_yaw: 0.75
+    fsm/collision_eval_track_err_max: 1.00
+    fsm/risk_replan_threshold: 0.78
+    fsm/risk_replan_hits: 2
+    fsm/risk_replan_min_elapsed: 0.30
+    fsm/goal_projection_max_radius: 2.5
+    fsm/goal_projection_radius_step: 0.25
+    fsm/goal_projection_angle_step_deg: 15.0
+    fsm/goal_projection_min_sdf: 0.30
+    fsm/goal_projection_max_risk: 0.82
+    fsm/duplicate_goal_dist: 0.25
+    fsm/duplicate_goal_window: 0.35
+    fsm/active_goal_replace_dist: 0.50
+    fsm/active_goal_replace_yaw: 0.60

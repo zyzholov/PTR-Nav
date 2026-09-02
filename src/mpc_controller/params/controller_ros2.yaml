@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    mpc/dt: 0.1
+    mpc/predict_steps: 10
+    mpc/max_steer: 0.785
+    mpc/max_dsteer: 0.55
+    mpc/max_speed: 0.8
+    mpc/min_speed: -0.3
+    mpc/reverse_speed_cap: 0.2
+    mpc/max_accel: 0.8
+    mpc/wheel_base: 0.6
+    mpc/delay_num: 0
+    mpc/test_mpc: false
+    mpc/matrix_q: [100.0, 100.0, 10.0]
+    mpc/matrix_r: [0.22, 0.10]
+    mpc/matrix_rd: [18.0, 35.0]

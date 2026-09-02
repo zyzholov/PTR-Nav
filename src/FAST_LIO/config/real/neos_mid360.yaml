@@ -1,0 +1,74 @@
+/**:
+    ros__parameters:
+        # Real NEOS + Livox MID360 profile.
+        # Assumptions:
+        # - LiDAR uses the normal Livox MID360 CustomMsg topic.
+        # - IMU is published on /imu_raw.
+        # - frame.body_pose_* currently makes base_link coincide with the
+        #   FAST_LIO IMU body frame. Update these values after measuring the
+        #   MID360 IMU pose relative to the vehicle base_link you choose.
+        feature_extract_enable: false
+        point_filter_num: 3
+        max_iteration: 4
+        filter_size_surf: 0.25
+        filter_size_map: 0.25
+        cube_side_length: 400.0
+        runtime_pos_log_enable: false
+        map_file_path: "./neos_mid360_map.pcd"
+
+        common:
+            lid_topic: "/livox/lidar"
+            imu_topic: "/imu/data_raw"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+
+        preprocess:
+            lidar_type: 1
+            scan_line: 4
+            scan_rate: 10
+            timestamp_unit: 3
+            # Real MID360 near-field filtering. Increase to 0.30-0.50 if
+            # vehicle body returns leak into FAST_LIO.
+            blind: 0.4
+
+        mapping:
+            acc_cov: 0.10
+            gyr_cov: 0.10
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 80.0
+            # Keep online estimation enabled for first real calibration runs.
+            # After a stable LiDAR-IMU extrinsic is known, set this false and
+            # freeze the measured extrinsic_T/R.
+            extrinsic_est_en: true
+            extrinsic_T: [0.035897, -0.046974,  0.062023]
+            extrinsic_R: [0.901899, 0.008284, 0.431867,
+                          -0.009984, 0.999949, 0.001671,
+                          -0.431831, -0.005818, 0.901936]
+
+        publish:
+            path_en: true
+            effect_map_en: false
+            map_en: true
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: false
+            local_map_en: true
+            local_map_radius: 35.0
+            local_map_z_half: 5.0
+
+        frame:
+            map_frame: "map"
+            body_frame: "base_link"
+            # Published base_link pose relative to FAST_LIO IMU state.
+            # Replace with measured IMU->base_link transform before closed-loop
+            # field tests if the MID360 is not mounted at the selected base_link.
+            body_pose_T: [0.0, 0.0, 0.0]
+            body_pose_R: [1.0, 0.0, 0.0,
+                          0.0, 1.0, 0.0,
+                          0.0, 0.0, 1.0]
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1

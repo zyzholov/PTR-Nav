@@ -1,0 +1,9 @@
+repositories:
+  FAST-LIVO2-ROS2:
+    type: git
+    url: https://github.com/v4rl-ucy/FAST-LIVO2-ROS2.git
+    version: main
+  rpg_vikit_ros2_fisheye:
+    type: git
+    url: https://github.com/Rhymer-Lcy/rpg_vikit_ros2_fisheye.git
+    version: main

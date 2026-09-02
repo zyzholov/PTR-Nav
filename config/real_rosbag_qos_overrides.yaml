@@ -1,0 +1,183 @@
+# QoS overrides for real-robot rosbag recording.
+# Sensor and cloud topics are kept best-effort compatible so the recorder can
+# be started before the publishers appear without missing best-effort streams.
+
+/tf:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 100
+
+/tf_static:
+  reliability: reliable
+  durability: transient_local
+  history: keep_last
+  depth: 100
+
+/rosout:
+  reliability: reliable
+  durability: transient_local
+  history: keep_last
+  depth: 1000
+
+/livox/lidar:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 200
+
+/imu_raw:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 500
+
+/cloud_registered:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 20
+
+/aft_mapped_to_init:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 20
+
+/cloud_registered_body:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 20
+
+/cloud_effected:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 20
+
+/cloud_local_map:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 5
+
+/cloud_visual_sub_map_before:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 5
+
+/LIVO2/imu_propagate:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 200
+
+/rgb_img:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/Laser_map:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 2
+
+/car_0_terrain_analyzer/elevation_cloud:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/car_0_terrain_analyzer/sdf_cloud:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/car_0_terrain_analyzer/risk_cloud:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/car_0_terrain_analyzer/obstacle_cloud:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/car_0_terrain_analyzer/overhead_cloud:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/goal_pose:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/move_base_simple/goal:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/vehicle_model:
+  reliability: reliable
+  durability: transient_local
+  history: keep_last
+  depth: 1
+
+/camera/camera/color/image_raw:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 30
+
+/camera/camera/color/camera_info:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 30
+
+/camera/camera/color/metadata:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 30
+
+/camera/camera/depth/image_rect_raw:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 30
+
+/camera/camera/depth/camera_info:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 30
+
+/camera/camera/depth/metadata:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 30
+
+/camera/camera/extrinsics/depth_to_color:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 30
+
+/camera/camera/depth/color/points:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 10

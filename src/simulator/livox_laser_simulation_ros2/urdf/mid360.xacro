@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!--
+    Adapted from src/simulator/livox_mid360/new/livox_mid360.xacro and its
+    accompanying MID360 assets under src/simulator/livox_mid360/new/livox_mid40.
+  -->
+
+  <xacro:property name="M_PI" value="3.1415926"/> 
+  <xacro:property name="laser_min_range" value="0.02"/>
+  <xacro:property name="laser_max_range" value="30.0"/>
+  <xacro:property name="default_samples" value="24000"/>
+  <xacro:property name="default_downsample" value="3"/>
+  <xacro:property name="resolution" value="0.02"/>
+  <xacro:property name="noise_mean" value="0.0"/>
+  <xacro:property name="noise_stddev" value="0.0"/>
+
+  <xacro:property name="sensor_offset_x" value="-0.012"/>
+  <xacro:property name="sensor_offset_y" value="0.0"/>
+  <xacro:property name="sensor_offset_z" value="0.047"/>
+
+  <xacro:macro name="null_inertial">
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro
+    name="mid360"
+    params="name:='livox' parent:= 'base_link' topic:='/livox/lidar'
+            self_filter_enable:='0'
+            self_filter_sensor_x:='0.0' self_filter_sensor_y:='0.0' self_filter_sensor_z:='0.0'
+            self_filter_sensor_yaw:='0.0'
+            self_filter_min_x:='-0.5' self_filter_max_x:='0.5'
+            self_filter_min_y:='-0.3' self_filter_max_y:='0.3'
+            self_filter_min_z:='-0.3' self_filter_max_z:='0.2'
+            scan_samples:='${default_samples}' scan_downsample:='${default_downsample}'
+            sensor_update_rate:='10' ray_horizontal_samples:='100' ray_vertical_samples:='360'
+            laser_max_range_override:='${laser_max_range}' lidar_visualize:='false'
+            terrain_mode:='false' terrain_heightmap:=''
+            terrain_ray_step:='0.12'
+            *origin ">
+    <link name="${name}_base">
+      <xacro:null_inertial/>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find ros2_livox_simulation)/meshes/mid360.dae"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find ros2_livox_simulation)/meshes/mid360_rules.dae"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${name}">
+      <xacro:null_inertial/>
+    </link>
+
+    <joint name="${name}_mount_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}_base"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <joint name="${name}_sensor_joint" type="fixed">
+      <parent link="${name}_base"/>
+      <child link="${name}"/>
+      <origin xyz="${sensor_offset_x} ${sensor_offset_y} ${sensor_offset_z}" rpy="0 0 0"/>
+    </joint>
+
+    <gazebo reference="${name}">
+      <sensor type="ray" name="${name}">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>${lidar_visualize}</visualize>
+        <update_rate>${sensor_update_rate}</update_rate>
+        <!-- This ray plgin is only for visualization. -->
+        <plugin name="${name}_plugin" filename="libros2_livox.so">
+			<ray>
+			  <scan>
+				<horizontal>
+				<samples>${ray_horizontal_samples}</samples>
+				<resolution>1</resolution>
+				<min_angle>${0}</min_angle>
+				<max_angle>${2*M_PI}</max_angle>
+				</horizontal>
+				<vertical>
+				<samples>${ray_vertical_samples}</samples>
+				<resolution>1</resolution>
+				<min_angle>${-3.22/180*M_PI}</min_angle>
+				<max_angle>${56.22/180*M_PI}</max_angle>
+				</vertical>
+			  </scan>
+			  <range>
+				<min>${laser_min_range}</min>
+				<max>${laser_max_range_override}</max>
+				<resolution>${resolution}</resolution>
+			  </range>
+			  <noise>
+				<type>gaussian</type>
+				<mean>${noise_mean}</mean>
+				<stddev>${noise_stddev}</stddev>
+			  </noise>
+			</ray>
+          <visualize>false</visualize>
+		  <samples>${scan_samples}</samples>
+		  <downsample>${scan_downsample}</downsample>
+		  <csv_file_name>$(find ros2_livox_simulation)/scan_mode/mid360.csv</csv_file_name>
+		  <topic>${topic}</topic>
+          <self_filter_enable>${self_filter_enable}</self_filter_enable>
+          <self_filter_sensor_x>${self_filter_sensor_x}</self_filter_sensor_x>
+          <self_filter_sensor_y>${self_filter_sensor_y}</self_filter_sensor_y>
+          <self_filter_sensor_z>${self_filter_sensor_z}</self_filter_sensor_z>
+          <self_filter_sensor_yaw>${self_filter_sensor_yaw}</self_filter_sensor_yaw>
+          <self_filter_min_x>${self_filter_min_x}</self_filter_min_x>
+          <self_filter_max_x>${self_filter_max_x}</self_filter_max_x>
+          <self_filter_min_y>${self_filter_min_y}</self_filter_min_y>
+          <self_filter_max_y>${self_filter_max_y}</self_filter_max_y>
+          <self_filter_min_z>${self_filter_min_z}</self_filter_min_z>
+          <self_filter_max_z>${self_filter_max_z}</self_filter_max_z>
+          <terrain_mode>${terrain_mode}</terrain_mode>
+          <terrain_heightmap>${terrain_heightmap}</terrain_heightmap>
+          <terrain_size_x>37.5</terrain_size_x>
+          <terrain_size_y>37.5</terrain_size_y>
+          <terrain_size_z>5.0</terrain_size_z>
+          <terrain_origin_x>0.0</terrain_origin_x>
+          <terrain_origin_y>0.0</terrain_origin_y>
+          <terrain_origin_z>0.0</terrain_origin_z>
+          <terrain_ray_step>${terrain_ray_step}</terrain_ray_step>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+</robot>

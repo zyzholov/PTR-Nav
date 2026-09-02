@@ -1,0 +1,105 @@
+/**:
+  ros__parameters:
+    common:
+      img_topic: "/camera/camera/color/image_raw"
+      lid_topic: "/livox/lidar"
+      imu_topic: "/livox/imu"
+      img_en: 1
+      lidar_en: 1
+      ros_driver_bug_fix: false
+      enable_image_processing: false
+
+    extrin_calib:
+      # Isaac stacked mount:
+      #   Livox base_link xyz=[0.18, 0.0, 0.250], pitch=25 deg
+      #   LiDAR frame offset in Livox base=[-0.012, 0.0, 0.047]
+      #   IMU frame xyz=[0.18, 0.0, 0.205]
+      # FAST-LIVO2 uses p_imu = extrinsic_R * p_lidar + extrinsic_T.
+      extrinsic_T: [0.008987365, 0.0, 0.092667885]
+      extrinsic_R: [0.906307787, 0.0, 0.422618262,
+                    0.0, 1.0, 0.0,
+                    -0.422618262, 0.0, 0.906307787]
+      # LiDAR -> D455 color optical transform for camera_link
+      # xyz=[0.225, 0.0, 0.205] plus a 0.02 m optical-center x offset.
+      Rcl: [0.0, -1.0, 0.0,
+            0.422618262, 0.0, -0.906307787,
+            0.906307787, 0.0, 0.422618262]
+      Pcl: [0.0, -0.092667885, -0.056012635]
+
+    time_offset:
+      imu_time_offset: 0.0
+      img_time_offset: 0.0
+      exposure_time_init: 0.0
+
+    preprocess:
+      point_filter_num: 1
+      filter_size_surf: 0.20
+      lidar_type: 8
+      scan_line: 16
+      blind: 0.20
+      generic_scan_period_ms: 100.0
+      feature_extract_enabled: false
+
+    vio:
+      max_iterations: 5
+      outlier_threshold: 500
+      img_point_cov: 100
+      patch_size: 8
+      patch_pyrimid_level: 4
+      grid_size: 5
+      normal_en: true
+      raycast_en: false
+      inverse_composition_en: false
+      exposure_estimate_en: true
+      inv_expo_cov: 0.1
+
+    imu:
+      imu_en: true
+      imu_int_frame: 30
+      acc_cov: 0.10
+      gyr_cov: 0.10
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      gravity_est_en: true
+      ba_bg_est_en: true
+
+    lio:
+      max_iterations: 5
+      min_iterations: 5
+      dept_err: 0.02
+      beam_err: 0.05
+      min_eigen_value: 0.0025
+      voxel_size: 0.45
+      max_layer: 2
+      max_points_num: 50
+      layer_init_num: [5, 5, 5, 5, 5]
+
+    local_map:
+      map_sliding_en: true
+      half_map_size: 100
+      sliding_thresh: 8.0
+
+    uav:
+      imu_rate_odom: false
+      gravity_align_en: false
+
+    publish:
+      dense_map_en: false
+      pub_effect_point_en: false
+      pub_plane_en: false
+      pub_scan_num: 1
+      blind_rgb_points: 0.0
+
+    evo:
+      seq_name: "hunter_isaac_d455_sim"
+      pose_output_en: false
+
+    pcd_save:
+      pcd_save_en: false
+      colmap_output_en: false
+      filter_size_pcd: 0.20
+      interval: -1
+
+    debug:
+      plot_time: -10.0
+      frame_cnt: 6

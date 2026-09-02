@@ -1,0 +1,54 @@
+# ROS 2 / colcon build products
+build/
+install/
+log/
+.colcon/
+
+# Runtime data and recordings
+bags/
+rosbag2_*/
+*.bag
+*.db3
+*.mcap
+*.pcd.tmp
+*.pcd~
+
+# Python and local virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+src/.venv/
+src/CMakeLists.txt
+
+# IDE/editor and local assistant state
+.vscode/
+.idea/
+.antigravitycli/
+src/.vscode/
+src/.claude/
+
+# Logs, caches, and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+.cache/
+.DS_Store
+
+# Generated FAST-LIO map outputs
+src/FAST_LIO/PCD/
+isaac_hunter_mid360_map.pcd
+gazebo_hunter_mid360_map.pcd
+test.pcd
+
+# Local dependency snapshots/backups
+env_backups/

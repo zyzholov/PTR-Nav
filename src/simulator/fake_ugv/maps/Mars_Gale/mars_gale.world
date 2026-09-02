@@ -1,0 +1,2422 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="mars_gale_world">
+    <gravity>0 0 -9.81</gravity>
+    <physics name="ode_stable" type="ode">
+      <real_time_update_rate>400.0</real_time_update_rate>
+      <max_step_size>0.0025</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>40</iters>
+          <sor>1.3</sor>
+          <use_dynamic_moi_rescaling>true</use_dynamic_moi_rescaling>
+        </solver>
+        <constraints>
+          <cfm>0.0</cfm>
+          <erp>0.2</erp>
+          <contact_max_correcting_vel>2.0</contact_max_correcting_vel>
+          <contact_surface_layer>0.001</contact_surface_layer>
+        </constraints>
+      </ode>
+    </physics>
+
+    <scene>
+      <ambient>0.55 0.50 0.45 1</ambient>
+      <background>0.40 0.35 0.32 1</background>
+      <shadows>false</shadows>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 60 0 0 0</pose>
+      <diffuse>0.95 0.86 0.75 1</diffuse>
+      <specular>0.15 0.12 0.10 1</specular>
+      <direction>-0.45 0.25 -0.86</direction>
+    </light>
+
+    <gui fullscreen="0">
+      <camera name="startup_camera">
+        <pose>28 -34 24 0 0.50 2.35</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+    <include>
+      <static>true</static>
+      <name>mars_gale</name>
+      <pose>0 0 0 0 0 0</pose>
+      <uri>model://Mars_Gale</uri>
+    </include>
+
+    <!-- Deterministic obstacle field sampled on the Mars Gale collision mesh.
+         The pose z values use local terrain height plus clearance, and spacing
+         was filtered to keep the objects from overlapping. -->
+    <include>
+      <name>mars_gale_tank1_3</name>
+      <pose>-56.21 -59.40 -1.12 0 0 1.647</pose>
+      <uri>model://tank1</uri>
+    </include>
+    <include>
+      <name>mars_gale_oak_tree_4</name>
+      <pose>-36.02 -56.76 -1.04 0 0 -3.122</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_4</name>
+      <pose>33.57 -52.68 6.62 0 0 -0.750</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_1</name>
+      <pose>-55.49 -50.87 -1.83 0 0 2.701</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_oak_tree_5</name>
+      <pose>-19.40 -45.47 -0.82 0 0 2.734</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_8</name>
+      <pose>-66.66 -37.04 -3.28 0 0 0.773</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_jet_1</name>
+      <pose>-23.38 -20.45 0.58 0 0 3.046</pose>
+      <uri>model://jet</uri>
+    </include>
+    <include>
+      <name>mars_gale_digital_wall_3</name>
+      <pose>36.08 -17.60 1.58 0 0 0.960</pose>
+      <uri>model://digital_wall</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_3</name>
+      <pose>48.13 -1.86 1.11 0 0 -0.330</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_tank2_3</name>
+      <pose>33.59 5.13 0.49 0 0 1.928</pose>
+      <uri>model://tank2</uri>
+    </include>
+    <include>
+      <name>mars_gale_digital_wall_1</name>
+      <pose>-13.77 6.02 1.35 0 0 0.960</pose>
+      <uri>model://digital_wall</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_5</name>
+      <pose>79.53 7.88 3.19 0 0 2.604</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_6</name>
+      <pose>61.36 9.15 1.06 0 0 3.032</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_tank1_2</name>
+      <pose>50.62 9.29 0.71 0 0 -0.204</pose>
+      <uri>model://tank1</uri>
+    </include>
+    <include>
+      <name>mars_gale_tank1_1</name>
+      <pose>56.56 19.66 0.70 0 0 2.638</pose>
+      <uri>model://tank1</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_2</name>
+      <pose>43.68 21.72 -0.24 0 0 0.776</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_digital_wall_2</name>
+      <pose>12.26 29.59 -0.97 0 0 0.384</pose>
+      <uri>model://digital_wall</uri>
+    </include>
+    <include>
+      <name>mars_gale_oak_tree_1</name>
+      <pose>64.35 30.25 0.80 0 0 -1.162</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_oak_tree_2</name>
+      <pose>45.39 32.05 -0.15 0 0 -0.343</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_tank2_2</name>
+      <pose>74.21 37.39 1.05 0 0 1.799</pose>
+      <uri>model://tank2</uri>
+    </include>
+    <include>
+      <name>mars_gale_oak_tree_3</name>
+      <pose>57.88 44.05 0.22 0 0 -0.316</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_tank2_1</name>
+      <pose>25.85 46.84 -1.52 0 0 2.264</pose>
+      <uri>model://tank2</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_7</name>
+      <pose>71.58 49.20 0.51 0 0 -1.191</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Extra tree cover around the vehicle spawn area. These keep the immediate
+         start and east/northeast departure lane open for planning. -->
+    <include>
+      <name>mars_gale_pine_tree_extra_4</name>
+      <pose>15.75 -49.76 2.70 0 0 2.459</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_extra_3</name>
+      <pose>21.95 -46.04 3.01 0 0 0.563</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_extra_1</name>
+      <pose>0.15 -45.77 0.23 0 0 2.380</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_extra_2</name>
+      <pose>6.52 -40.57 0.36 0 0 -2.818</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_oak_tree_extra_1</name>
+      <pose>-3.97 -31.64 -0.18 0 0 -1.130</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_oak_tree_extra_2</name>
+      <pose>7.27 -21.42 0.36 0 0 -0.840</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_tree_extra_5</name>
+      <pose>13.52 -12.72 0.27 0 0 3.041</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Denser spawn-area grove and hillside obstacles. Heights were sampled
+         from the Mars Gale collision mesh; positions keep a clear buffer around
+         the vehicle spawn while adding richer obstacle coverage on the slope. -->
+    <include>
+      <name>mars_gale_slope_house_1</name>
+      <pose>105.00 -28.00 15.07 0 0 0.420</pose>
+      <uri>model://seb_house_1</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_wall_1</name>
+      <pose>105.00 45.00 3.27 0 0 1.350</pose>
+      <uri>model://digital_wall</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_jet_1</name>
+      <pose>100.00 9.00 5.26 0 0 0.130</pose>
+      <uri>model://jet</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_officer_1</name>
+      <pose>112.00 -16.00 14.83 0 0 -0.600</pose>
+      <uri>model://officer</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_officer_2</name>
+      <pose>93.00 -8.50 9.53 0 0 0.400</pose>
+      <uri>model://officer</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_01_pine_tree</name>
+      <pose>-9.00 -39.00 -0.74 0 0 -2.550</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_02_pine_tree</name>
+      <pose>-4.00 -42.50 -0.50 0 0 1.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_03_oak_tree</name>
+      <pose>-8.50 -28.50 -1.10 0 0 -1.700</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_04_pine_tree</name>
+      <pose>-0.50 -36.80 -0.31 0 0 0.350</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_05_pine_tree</name>
+      <pose>2.80 -48.80 0.42 0 0 2.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_06_pine_tree</name>
+      <pose>2.50 -25.00 -0.14 0 0 -0.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_07_oak_tree</name>
+      <pose>4.00 -17.80 -0.07 0 0 0.800</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_08_pine_tree</name>
+      <pose>9.50 -43.80 0.63 0 0 -2.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_09_pine_tree</name>
+      <pose>11.80 -37.50 0.26 0 0 1.450</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_10_pine_tree</name>
+      <pose>14.20 -26.00 0.35 0 0 -0.900</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_11_oak_tree</name>
+      <pose>17.50 -35.00 0.60 0 0 2.750</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_12_pine_tree</name>
+      <pose>18.50 -20.20 0.42 0 0 0.150</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_13_pine_tree</name>
+      <pose>23.00 -38.50 1.50 0 0 -1.250</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_15_pine_tree</name>
+      <pose>-12.50 -21.00 -0.25 0 0 2.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_16_pine_tree</name>
+      <pose>-14.00 -32.50 -1.49 0 0 -0.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_spawn_17_oak_tree</name>
+      <pose>-1.50 -15.00 1.60 0 0 1.100</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_01_pine_tree</name>
+      <pose>34.00 -48.00 5.65 0 0 1.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_02_pine_tree</name>
+      <pose>39.50 -51.50 7.06 0 0 -2.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_03_oak_tree</name>
+      <pose>43.00 -43.50 6.58 0 0 0.400</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_04_pine_tree</name>
+      <pose>48.50 -49.00 9.12 0 0 2.700</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_05_pine_tree</name>
+      <pose>53.50 -42.00 7.83 0 0 -1.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_06_oak_tree</name>
+      <pose>57.50 -35.50 7.15 0 0 2.300</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_07_pine_tree</name>
+      <pose>63.00 -30.00 7.01 0 0 -0.300</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_08_pine_tree</name>
+      <pose>68.50 -39.50 10.75 0 0 1.900</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_09_pine_tree</name>
+      <pose>72.00 -26.50 8.44 0 0 -2.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_10_oak_tree</name>
+      <pose>77.50 -33.00 11.29 0 0 0.650</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_11_pine_tree</name>
+      <pose>84.00 -25.00 10.98 0 0 2.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_12_pine_tree</name>
+      <pose>91.00 -18.00 11.31 0 0 -1.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_13_pine_tree</name>
+      <pose>99.00 -10.50 11.76 0 0 0.900</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_15_pine_tree</name>
+      <pose>58.00 -17.50 3.42 0 0 1.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_16_oak_tree</name>
+      <pose>66.00 -13.50 3.65 0 0 -2.700</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_17_pine_tree</name>
+      <pose>73.00 -10.00 4.07 0 0 0.300</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_18_pine_tree</name>
+      <pose>82.00 -7.00 5.53 0 0 -1.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_19_pine_tree</name>
+      <pose>91.50 -4.00 7.14 0 0 2.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_22_pine_tree</name>
+      <pose>56.50 -4.50 1.27 0 0 2.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_23_pine_tree</name>
+      <pose>70.00 -2.50 2.65 0 0 -1.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_slope_24_pine_tree</name>
+      <pose>85.00 2.50 3.71 0 0 0.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Additional rear-side and hillside density. Poses are sampled from the
+         Mars Gale collision mesh and keep spacing from existing large props. -->
+    <include>
+      <name>mars_gale_back_dense_01_seb_house_1</name>
+      <pose>30.00 74.00 -2.96 0 0 0.050</pose>
+      <uri>model://seb_house_1</uri>
+    </include>
+    <include>
+      <name>mars_gale_back_dense_02_digital_wall</name>
+      <pose>54.00 78.00 -0.69 0 0 0.200</pose>
+      <uri>model://digital_wall</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_01_tank2</name>
+      <pose>112.00 -57.00 20.52 0 0 -0.500</pose>
+      <uri>model://tank2</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_01_pine_tree</name>
+      <pose>72.00 18.00 1.06 0 0 -2.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_02_oak_tree</name>
+      <pose>80.00 20.00 1.82 0 0 0.600</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_03_pine_tree</name>
+      <pose>88.00 19.00 3.23 0 0 1.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_04_pine_tree</name>
+      <pose>96.00 21.00 3.51 0 0 -0.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_05_oak_tree</name>
+      <pose>108.00 22.00 5.13 0 0 2.200</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_06_pine_tree</name>
+      <pose>76.00 30.00 0.86 0 0 -1.700</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_07_oak_tree</name>
+      <pose>85.00 31.00 1.80 0 0 1.900</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_08_pine_tree</name>
+      <pose>94.00 30.00 2.74 0 0 -2.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_09_pine_tree</name>
+      <pose>82.00 42.00 1.29 0 0 -0.500</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_10_pine_tree</name>
+      <pose>66.00 52.00 0.10 0 0 -1.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_11_pine_tree</name>
+      <pose>76.00 55.00 0.72 0 0 0.900</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_12_oak_tree</name>
+      <pose>88.00 54.00 2.02 0 0 -2.700</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_13_oak_tree</name>
+      <pose>82.00 72.00 3.37 0 0 2.400</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_14_pine_tree</name>
+      <pose>96.00 78.00 4.21 0 0 -1.500</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_15_pine_tree</name>
+      <pose>116.00 78.00 4.78 0 0 0.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_16_pine_tree</name>
+      <pose>24.00 82.00 -4.35 0 0 -2.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_17_oak_tree</name>
+      <pose>78.00 84.00 1.73 0 0 1.100</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_upper_dense_18_pine_tree</name>
+      <pose>108.00 84.00 4.55 0 0 -0.500</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_02_pine_tree</name>
+      <pose>61.00 -55.00 11.88 0 0 1.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_03_oak_tree</name>
+      <pose>101.00 -51.00 18.69 0 0 -2.200</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_04_pine_tree</name>
+      <pose>111.00 -49.00 18.72 0 0 0.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_05_pine_tree</name>
+      <pose>64.00 -46.00 10.82 0 0 -2.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_06_oak_tree</name>
+      <pose>73.00 -44.00 12.27 0 0 0.400</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_07_pine_tree</name>
+      <pose>82.00 -46.00 16.42 0 0 2.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_08_pine_tree</name>
+      <pose>91.00 -43.00 15.77 0 0 -1.500</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_09_pine_tree</name>
+      <pose>100.00 -40.00 15.78 0 0 0.900</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_rear_dense_10_oak_tree</name>
+      <pose>110.00 -39.00 16.88 0 0 -0.200</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_01_pine_tree</name>
+      <pose>29.00 -44.00 3.63 0 0 0.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_02_pine_tree</name>
+      <pose>35.00 -40.00 3.68 0 0 -2.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_03_oak_tree</name>
+      <pose>42.00 -36.00 3.95 0 0 1.100</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_04_pine_tree</name>
+      <pose>55.00 -27.00 4.66 0 0 2.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_05_oak_tree</name>
+      <pose>62.00 -24.00 5.78 0 0 -0.600</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_06_pine_tree</name>
+      <pose>70.00 -21.00 6.53 0 0 1.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_07_pine_tree</name>
+      <pose>78.00 -20.00 8.78 0 0 -2.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_08_oak_tree</name>
+      <pose>87.00 -14.00 9.85 0 0 0.500</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_09_pine_tree</name>
+      <pose>96.00 -16.00 11.98 0 0 -1.100</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_10_pine_tree</name>
+      <pose>61.00 -9.00 2.61 0 0 -0.300</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_11_pine_tree</name>
+      <pose>95.00 -1.00 7.16 0 0 -2.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_12_pine_tree</name>
+      <pose>107.00 -5.00 11.81 0 0 0.700</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_13_oak_tree</name>
+      <pose>45.00 -55.00 9.59 0 0 1.900</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_14_pine_tree</name>
+      <pose>58.00 -52.00 11.06 0 0 -2.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_15_pine_tree</name>
+      <pose>-17.00 -28.00 -1.03 0 0 -1.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_16_oak_tree</name>
+      <pose>-10.00 -48.00 -0.69 0 0 2.000</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_17_pine_tree</name>
+      <pose>-5.00 -54.00 0.58 0 0 -0.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_18_pine_tree</name>
+      <pose>6.00 -55.00 1.91 0 0 1.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_19_pine_tree</name>
+      <pose>27.00 -48.00 4.41 0 0 0.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_20_pine_tree</name>
+      <pose>-11.00 -12.00 1.69 0 0 -2.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_fill_dense_21_pine_tree</name>
+      <pose>10.00 -10.00 1.13 0 0 0.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Focused fill for the x-positive rear/right sector. This area was still
+         visually sparse from the Gazebo view, so keep the spacing tighter here. -->
+    <include>
+      <name>mars_gale_xrear_dense_01_officer</name>
+      <pose>118.00 -36.00 18.22 0 0 1.400</pose>
+      <uri>model://officer</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_02_tank1</name>
+      <pose>118.00 -22.00 16.00 0 0 -0.900</pose>
+      <uri>model://tank1</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_03_pine_tree</name>
+      <pose>68.00 -74.00 18.65 0 0 0.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_04_pine_tree</name>
+      <pose>76.00 -76.00 20.00 0 0 -1.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_05_oak_tree</name>
+      <pose>84.00 -74.00 21.34 0 0 2.100</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_06_pine_tree</name>
+      <pose>93.00 -76.00 23.56 0 0 -0.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_07_pine_tree</name>
+      <pose>103.00 -75.00 24.58 0 0 1.500</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_08_oak_tree</name>
+      <pose>113.00 -73.00 24.48 0 0 -2.200</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_09_pine_tree</name>
+      <pose>70.00 -66.00 16.86 0 0 -2.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_10_oak_tree</name>
+      <pose>79.00 -65.00 19.09 0 0 0.500</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_11_pine_tree</name>
+      <pose>88.00 -68.00 21.44 0 0 2.400</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_12_pine_tree</name>
+      <pose>97.00 -66.00 23.46 0 0 -1.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_13_pine_tree</name>
+      <pose>106.00 -64.00 22.07 0 0 0.900</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_14_oak_tree</name>
+      <pose>116.00 -64.00 22.87 0 0 -0.300</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_15_pine_tree</name>
+      <pose>73.00 -60.00 17.26 0 0 1.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_16_pine_tree</name>
+      <pose>82.00 -60.00 19.40 0 0 -2.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_17_oak_tree</name>
+      <pose>91.00 -59.00 20.98 0 0 0.400</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_18_pine_tree</name>
+      <pose>101.00 -59.00 20.91 0 0 2.600</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_19_pine_tree</name>
+      <pose>87.00 -38.00 13.48 0 0 2.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_20_oak_tree</name>
+      <pose>96.00 -35.00 14.32 0 0 -1.800</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_21_pine_tree</name>
+      <pose>118.00 -32.00 17.64 0 0 2.700</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_22_pine_tree</name>
+      <pose>74.00 -31.00 10.52 0 0 -0.500</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_23_pine_tree</name>
+      <pose>92.00 -28.00 12.74 0 0 1.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_24_oak_tree</name>
+      <pose>75.00 -15.00 6.13 0 0 2.400</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_25_pine_tree</name>
+      <pose>103.00 -12.00 13.31 0 0 0.800</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_26_pine_tree</name>
+      <pose>117.00 -9.00 13.40 0 0 -2.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_27_pine_tree</name>
+      <pose>112.00 0.00 11.07 0 0 1.000</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_28_oak_tree</name>
+      <pose>118.00 7.00 10.44 0 0 -1.200</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_29_pine_tree</name>
+      <pose>52.00 -35.00 6.43 0 0 0.300</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_30_pine_tree</name>
+      <pose>68.00 -34.00 9.43 0 0 -2.200</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_31_pine_tree</name>
+      <pose>75.00 -39.00 11.50 0 0 1.500</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_32_oak_tree</name>
+      <pose>90.00 -22.00 11.63 0 0 2.800</pose>
+      <uri>model://oak_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_xrear_dense_33_pine_tree</name>
+      <pose>118.00 -44.00 18.74 0 0 1.900</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Broader pine-only fill. These are static pine_tree instances with a
+         simple trunk collision, sampled from the Mars Gale collision mesh and
+         filtered to keep visual/collision ground disagreement small. -->
+    <include>
+      <name>mars_gale_pine_broad_west_01</name>
+      <pose>-21.53 -2.03 0.38 0 0 -1.465</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_west_02</name>
+      <pose>-36.71 12.13 -2.91 0 0 0.963</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_west_03</name>
+      <pose>-48.82 -44.08 -2.91 0 0 -0.042</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_west_04</name>
+      <pose>-60.19 -32.96 -4.10 0 0 -2.064</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_west_05</name>
+      <pose>-34.73 -21.03 -0.43 0 0 0.827</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_west_06</name>
+      <pose>-33.00 -12.00 -1.85 0 0 1.163</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_west_07</name>
+      <pose>-53.37 -7.36 -4.75 0 0 0.631</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_west_08</name>
+      <pose>-35.54 2.19 -2.85 0 0 -1.095</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_southwest_01</name>
+      <pose>-28.89 -81.54 0.41 0 0 1.078</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_southwest_02</name>
+      <pose>-33.73 -66.20 -1.14 0 0 -2.598</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_southwest_03</name>
+      <pose>-23.32 -67.65 -0.46 0 0 2.867</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_southwest_04</name>
+      <pose>-46.82 -56.12 -1.77 0 0 -1.104</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_southwest_05</name>
+      <pose>-26.62 -58.34 -1.21 0 0 -1.217</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_southwest_06</name>
+      <pose>12.28 -76.89 6.96 0 0 0.576</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_southwest_07</name>
+      <pose>-19.14 -59.90 -0.78 0 0 0.674</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_01</name>
+      <pose>-1.71 75.71 -6.42 0 0 -2.613</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_02</name>
+      <pose>-10.39 28.10 -1.80 0 0 0.412</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_03</name>
+      <pose>-11.13 74.16 -8.26 0 0 -2.071</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_04</name>
+      <pose>24.59 12.43 1.93 0 0 -1.194</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_05</name>
+      <pose>9.52 72.35 -5.26 0 0 0.316</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_06</name>
+      <pose>4.14 12.52 0.54 0 0 2.846</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_07</name>
+      <pose>3.60 44.68 -1.34 0 0 -2.394</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_northwest_08</name>
+      <pose>16.92 18.55 1.78 0 0 -0.295</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_north_01</name>
+      <pose>70.61 61.11 0.69 0 0 -1.993</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_north_02</name>
+      <pose>39.86 74.22 -0.50 0 0 -1.355</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_north_03</name>
+      <pose>37.25 56.46 -1.98 0 0 -1.978</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_north_04</name>
+      <pose>61.34 65.78 0.52 0 0 -0.311</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_north_05</name>
+      <pose>50.98 50.58 -0.59 0 0 2.083</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_north_06</name>
+      <pose>43.64 59.50 -1.22 0 0 -0.828</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_north_07</name>
+      <pose>60.99 84.94 -0.37 0 0 -1.054</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_east_01</name>
+      <pose>117.48 68.45 4.28 0 0 1.007</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_east_02</name>
+      <pose>115.85 40.34 4.50 0 0 -1.477</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_east_03</name>
+      <pose>104.29 31.51 3.74 0 0 -2.517</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_east_04</name>
+      <pose>106.21 54.17 3.99 0 0 3.010</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_east_05</name>
+      <pose>113.14 58.69 4.18 0 0 1.934</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_east_06</name>
+      <pose>111.09 72.88 4.76 0 0 -2.653</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_01</name>
+      <pose>27.20 -25.33 0.73 0 0 -1.654</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_02</name>
+      <pose>20.66 -13.76 -0.00 0 0 1.853</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_03</name>
+      <pose>-20.24 -53.19 -1.17 0 0 1.586</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_04</name>
+      <pose>29.65 -34.33 2.26 0 0 2.040</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_05</name>
+      <pose>-16.98 -9.75 0.79 0 0 0.980</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_06</name>
+      <pose>29.82 -10.36 0.39 0 0 -2.676</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_07</name>
+      <pose>-23.57 -29.73 -0.22 0 0 -0.442</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_broad_spawn_ring_08</name>
+      <pose>-18.19 -36.90 -1.69 0 0 -2.588</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Direct pine-tree fill added in the same style as the original map.
+         Poses use the tree-root terrain height, so the pine model sits on the
+         Mars Gale surface instead of floating or embedding its trunk center. -->
+    <include>
+      <name>mars_gale_pine_direct_fill_001</name>
+      <pose>59.70 27.23 0.18 0 0 -1.224</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_002</name>
+      <pose>25.97 32.38 -0.46 0 0 -1.784</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_003</name>
+      <pose>65.02 -67.57 15.84 0 0 2.226</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_004</name>
+      <pose>112.76 27.92 5.55 0 0 -2.305</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_005</name>
+      <pose>65.14 18.27 0.70 0 0 1.163</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_006</name>
+      <pose>64.23 -50.87 11.49 0 0 -0.047</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_007</name>
+      <pose>55.76 3.64 0.76 0 0 1.636</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_008</name>
+      <pose>111.87 5.47 9.66 0 0 2.363</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_009</name>
+      <pose>91.97 34.61 2.23 0 0 -2.354</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_010</name>
+      <pose>69.40 -49.35 12.36 0 0 -1.627</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_011</name>
+      <pose>28.69 -15.97 0.99 0 0 -0.054</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_012</name>
+      <pose>25.82 24.59 2.10 0 0 2.373</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_013</name>
+      <pose>109.70 32.11 4.34 0 0 1.340</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_014</name>
+      <pose>53.29 -10.82 1.73 0 0 -2.856</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_015</name>
+      <pose>52.25 -53.08 10.52 0 0 0.973</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_016</name>
+      <pose>51.59 32.46 -0.36 0 0 -1.252</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_017</name>
+      <pose>18.49 -64.01 4.67 0 0 -0.655</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_018</name>
+      <pose>62.71 -63.25 14.31 0 0 0.267</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_019</name>
+      <pose>45.38 -61.06 10.34 0 0 3.107</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_020</name>
+      <pose>96.80 -45.46 17.04 0 0 -2.052</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_021</name>
+      <pose>89.37 11.11 3.72 0 0 1.064</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_022</name>
+      <pose>60.89 -40.63 8.92 0 0 1.628</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_023</name>
+      <pose>53.78 -66.62 12.68 0 0 -1.510</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_024</name>
+      <pose>76.38 -4.07 3.43 0 0 -1.677</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_025</name>
+      <pose>107.49 12.46 5.95 0 0 -0.862</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_026</name>
+      <pose>86.71 -62.82 20.56 0 0 0.745</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_027</name>
+      <pose>64.77 -19.12 5.29 0 0 -0.482</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_028</name>
+      <pose>36.42 15.59 0.52 0 0 -0.872</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_029</name>
+      <pose>112.24 -68.07 23.10 0 0 1.796</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_030</name>
+      <pose>18.86 0.81 1.63 0 0 2.479</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_031</name>
+      <pose>98.39 -4.86 9.80 0 0 -0.995</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_032</name>
+      <pose>100.83 -19.10 13.47 0 0 1.727</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_033</name>
+      <pose>105.33 17.13 5.06 0 0 -0.894</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_034</name>
+      <pose>65.74 36.10 0.24 0 0 -0.483</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_035</name>
+      <pose>64.08 -1.49 1.91 0 0 2.380</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_036</name>
+      <pose>41.80 -64.66 9.87 0 0 2.247</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_037</name>
+      <pose>38.53 -10.37 0.96 0 0 2.179</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_038</name>
+      <pose>42.26 3.53 0.24 0 0 0.596</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_039</name>
+      <pose>75.81 -69.11 19.01 0 0 -1.074</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_040</name>
+      <pose>23.16 18.42 2.10 0 0 2.973</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_041</name>
+      <pose>33.97 37.88 -1.06 0 0 -0.513</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_042</name>
+      <pose>50.39 -6.31 1.04 0 0 1.017</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_043</name>
+      <pose>19.82 -5.34 0.03 0 0 -2.838</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_044</name>
+      <pose>87.64 -7.02 7.06 0 0 1.410</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_045</name>
+      <pose>74.88 -50.53 15.23 0 0 -0.443</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_046</name>
+      <pose>93.34 -52.82 20.10 0 0 2.722</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_047</name>
+      <pose>65.76 -59.48 13.70 0 0 -1.225</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_048</name>
+      <pose>27.99 16.33 1.77 0 0 1.952</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_049</name>
+      <pose>13.67 14.13 3.27 0 0 -3.075</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_050</name>
+      <pose>13.25 2.06 2.99 0 0 2.471</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_051</name>
+      <pose>10.34 -48.79 1.87 0 0 -1.931</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_052</name>
+      <pose>-8.46 0.29 2.93 0 0 -0.680</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_053</name>
+      <pose>-2.15 -5.17 4.35 0 0 -2.708</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_054</name>
+      <pose>19.19 -53.11 3.11 0 0 2.356</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_055</name>
+      <pose>23.81 -17.82 0.75 0 0 -0.453</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_056</name>
+      <pose>12.04 -5.45 2.20 0 0 1.826</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_057</name>
+      <pose>-0.21 -56.69 0.96 0 0 -0.045</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_058</name>
+      <pose>0.84 -9.61 3.79 0 0 0.495</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_059</name>
+      <pose>-5.45 9.05 1.57 0 0 2.855</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_060</name>
+      <pose>-21.05 13.74 -0.53 0 0 -1.405</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_061</name>
+      <pose>44.62 15.73 -0.24 0 0 2.646</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_062</name>
+      <pose>-9.37 -33.88 -1.11 0 0 2.330</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_063</name>
+      <pose>-15.37 -14.96 0.81 0 0 -2.208</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_064</name>
+      <pose>31.02 -28.80 2.22 0 0 -3.115</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_065</name>
+      <pose>37.32 -2.06 0.41 0 0 -0.933</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_066</name>
+      <pose>-4.59 -48.79 -0.20 0 0 -2.300</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_067</name>
+      <pose>74.74 74.34 1.86 0 0 -1.634</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_068</name>
+      <pose>-8.28 45.40 -4.05 0 0 -2.596</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_069</name>
+      <pose>47.99 64.05 -1.01 0 0 2.346</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_070</name>
+      <pose>77.20 63.10 1.75 0 0 -0.541</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_071</name>
+      <pose>69.33 80.99 1.35 0 0 0.810</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_072</name>
+      <pose>84.22 62.73 2.31 0 0 1.312</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_073</name>
+      <pose>92.14 58.29 3.09 0 0 2.533</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_074</name>
+      <pose>-12.95 82.72 -9.63 0 0 0.954</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_075</name>
+      <pose>16.41 63.02 -2.97 0 0 2.480</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_076</name>
+      <pose>15.64 53.96 -0.78 0 0 0.801</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_077</name>
+      <pose>34.01 83.35 -3.72 0 0 -2.511</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_078</name>
+      <pose>20.06 -71.17 7.38 0 0 1.322</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_079</name>
+      <pose>-12.34 -83.66 3.15 0 0 -0.516</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_080</name>
+      <pose>-16.26 -79.30 1.95 0 0 1.292</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_081</name>
+      <pose>-27.47 -73.33 -0.37 0 0 -1.508</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_082</name>
+      <pose>34.14 -72.77 9.71 0 0 -3.126</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_083</name>
+      <pose>-40.99 -74.17 -0.79 0 0 2.059</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_084</name>
+      <pose>-54.67 -68.73 -1.02 0 0 -2.147</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_085</name>
+      <pose>-38.42 -35.93 -1.91 0 0 -1.671</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_086</name>
+      <pose>-36.09 35.72 -4.99 0 0 -0.795</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_087</name>
+      <pose>-57.86 -18.68 -5.56 0 0 1.021</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_088</name>
+      <pose>-39.32 -6.32 -2.95 0 0 -1.337</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_089</name>
+      <pose>-64.70 34.74 -14.13 0 0 -0.542</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_090</name>
+      <pose>-42.60 -11.48 -2.89 0 0 -0.198</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Additional direct pine-tree fill for sparse east/north map areas.
+         These are world-level includes using terrain-sampled root heights. -->
+    <include>
+      <name>mars_gale_pine_direct_fill_091</name>
+      <pose>105.42 68.19 4.87 0 0 1.477</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_092</name>
+      <pose>96.24 68.74 4.30 0 0 -1.342</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_093</name>
+      <pose>86.72 80.11 2.67 0 0 2.281</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_094</name>
+      <pose>95.33 50.81 2.86 0 0 -2.464</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_095</name>
+      <pose>89.90 42.68 1.94 0 0 -2.681</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_096</name>
+      <pose>83.64 48.07 1.60 0 0 2.672</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_097</name>
+      <pose>-43.11 44.59 -7.05 0 0 -1.166</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_098</name>
+      <pose>-6.12 85.24 -9.66 0 0 -0.120</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_099</name>
+      <pose>-2.14 67.53 -6.12 0 0 -2.658</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_100</name>
+      <pose>-8.23 66.54 -7.31 0 0 -0.825</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_101</name>
+      <pose>-5.80 58.22 -4.57 0 0 2.238</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_102</name>
+      <pose>-13.51 63.04 -7.45 0 0 -0.968</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_103</name>
+      <pose>-16.89 49.76 -5.30 0 0 -3.079</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_104</name>
+      <pose>-17.95 42.63 -3.65 0 0 1.191</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_105</name>
+      <pose>116.35 33.36 5.57 0 0 1.304</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_106</name>
+      <pose>115.85 16.32 6.76 0 0 -2.809</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_107</name>
+      <pose>103.85 0.13 9.67 0 0 -1.464</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_108</name>
+      <pose>83.33 25.21 1.87 0 0 2.505</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_109</name>
+      <pose>76.98 46.40 0.82 0 0 -1.790</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_110</name>
+      <pose>63.54 58.84 -0.05 0 0 -0.735</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_111</name>
+      <pose>42.80 80.77 -1.19 0 0 -2.252</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_112</name>
+      <pose>66.91 45.36 0.17 0 0 1.341</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_113</name>
+      <pose>54.30 61.64 -0.40 0 0 -0.848</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_114</name>
+      <pose>57.40 55.04 0.19 0 0 -2.119</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_115</name>
+      <pose>34.62 66.99 -2.78 0 0 0.366</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_116</name>
+      <pose>22.06 74.07 -4.01 0 0 -2.412</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_117</name>
+      <pose>40.81 45.93 -1.14 0 0 -2.540</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_118</name>
+      <pose>33.76 47.16 -1.70 0 0 -1.065</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_119</name>
+      <pose>22.15 59.57 -3.43 0 0 -1.793</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_120</name>
+      <pose>1.03 58.79 -4.60 0 0 -0.195</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_121</name>
+      <pose>-23.48 34.88 -3.90 0 0 3.015</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_122</name>
+      <pose>-29.43 39.13 -4.56 0 0 1.736</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_123</name>
+      <pose>-33.79 24.64 -3.30 0 0 1.498</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_124</name>
+      <pose>-49.96 39.59 -6.73 0 0 0.082</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_125</name>
+      <pose>-54.59 30.68 -8.51 0 0 -0.061</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_126</name>
+      <pose>-56.74 21.11 -8.42 0 0 2.490</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_127</name>
+      <pose>-63.18 26.94 -10.95 0 0 1.853</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_128</name>
+      <pose>-6.06 39.05 -2.27 0 0 2.919</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_129</name>
+      <pose>-21.91 5.99 0.37 0 0 0.983</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_130</name>
+      <pose>-39.67 18.61 -3.52 0 0 1.914</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_131</name>
+      <pose>-31.92 7.70 -2.93 0 0 2.990</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_132</name>
+      <pose>-44.54 11.79 -3.36 0 0 -0.527</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_133</name>
+      <pose>-53.21 8.09 -4.07 0 0 2.539</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_134</name>
+      <pose>-61.21 10.01 -4.84 0 0 1.020</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_135</name>
+      <pose>-41.39 -20.87 -1.22 0 0 -1.977</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_136</name>
+      <pose>-51.58 -15.31 -4.58 0 0 -2.007</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_137</name>
+      <pose>-61.17 -3.09 -6.68 0 0 -1.560</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_138</name>
+      <pose>-50.09 -22.79 -4.37 0 0 2.090</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_139</name>
+      <pose>-21.55 -75.48 0.60 0 0 3.033</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_140</name>
+      <pose>-53.78 -32.80 -4.14 0 0 0.995</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_141</name>
+      <pose>-65.46 -19.42 -5.37 0 0 -2.767</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_142</name>
+      <pose>-22.32 -82.25 1.33 0 0 -2.132</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_143</name>
+      <pose>10.27 86.43 -6.65 0 0 -2.405</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_144</name>
+      <pose>112.62 -25.28 15.64 0 0 -1.056</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_145</name>
+      <pose>96.84 86.74 2.87 0 0 -0.344</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_146</name>
+      <pose>117.12 -82.70 29.46 0 0 -1.155</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_147</name>
+      <pose>-67.42 70.53 -21.44 0 0 0.484</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_148</name>
+      <pose>-19.02 69.84 -9.05 0 0 2.167</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_149</name>
+      <pose>9.05 38.45 -0.10 0 0 0.088</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_150</name>
+      <pose>99.41 -31.16 14.38 0 0 2.703</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_151</name>
+      <pose>-55.50 52.82 -14.33 0 0 0.845</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_152</name>
+      <pose>-54.07 86.00 -21.78 0 0 0.411</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_153</name>
+      <pose>-27.28 85.90 -15.18 0 0 0.937</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_154</name>
+      <pose>-28.51 69.33 -13.46 0 0 -1.988</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_155</name>
+      <pose>-39.29 67.83 -12.37 0 0 1.744</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_156</name>
+      <pose>-65.98 84.06 -22.93 0 0 -0.514</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_157</name>
+      <pose>-27.67 53.43 -7.63 0 0 2.694</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_158</name>
+      <pose>-39.62 82.03 -19.22 0 0 2.983</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_159</name>
+      <pose>87.75 69.72 3.39 0 0 -0.032</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_160</name>
+      <pose>-52.19 70.75 -19.96 0 0 2.356</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_161</name>
+      <pose>97.21 -84.56 25.95 0 0 -2.381</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_162</name>
+      <pose>-66.93 53.45 -20.06 0 0 -1.054</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Broader direct pine-tree fill for the right-side and far-range blanks.
+         Terrain heights were sampled from the Mars Gale collision mesh. -->
+    <include>
+      <name>mars_gale_pine_direct_fill_163</name>
+      <pose>113.75 50.01 3.85 0 0 -1.079</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_164</name>
+      <pose>83.36 -81.40 22.66 0 0 3.073</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_165</name>
+      <pose>119.16 24.42 5.75 0 0 2.171</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_166</name>
+      <pose>117.99 -74.61 25.57 0 0 0.155</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_167</name>
+      <pose>119.25 85.45 5.88 0 0 -1.182</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_168</name>
+      <pose>103.99 -81.31 25.96 0 0 -0.765</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_169</name>
+      <pose>103.76 38.43 3.21 0 0 1.189</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_170</name>
+      <pose>112.81 -86.63 31.03 0 0 -1.544</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_171</name>
+      <pose>103.82 61.53 4.61 0 0 -1.007</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_172</name>
+      <pose>109.36 63.92 4.32 0 0 -1.289</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_173</name>
+      <pose>84.90 -30.97 11.90 0 0 -2.683</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_174</name>
+      <pose>96.21 43.27 2.68 0 0 -0.011</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_175</name>
+      <pose>118.17 55.40 4.14 0 0 2.138</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_176</name>
+      <pose>73.31 67.97 1.78 0 0 2.214</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_177</name>
+      <pose>107.88 -44.03 17.40 0 0 -1.462</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_178</name>
+      <pose>-117.54 69.99 -25.36 0 0 1.695</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_179</name>
+      <pose>-93.28 -73.38 -0.49 0 0 0.802</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_180</name>
+      <pose>-84.75 70.38 -24.19 0 0 -1.862</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_181</name>
+      <pose>-116.56 -15.29 -17.22 0 0 0.340</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_182</name>
+      <pose>-93.55 81.51 -27.66 0 0 -0.274</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_183</name>
+      <pose>-84.65 15.35 -16.82 0 0 -0.684</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_184</name>
+      <pose>-82.57 -26.31 -5.12 0 0 2.194</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_185</name>
+      <pose>-93.06 57.08 -24.98 0 0 2.829</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_186</name>
+      <pose>-94.34 -58.00 -1.79 0 0 -0.880</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_187</name>
+      <pose>-116.84 -69.61 -1.37 0 0 0.817</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_188</name>
+      <pose>-105.19 -54.72 -1.33 0 0 -0.124</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_189</name>
+      <pose>-82.09 -73.17 1.22 0 0 0.514</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_190</name>
+      <pose>-105.55 -44.99 -2.38 0 0 0.928</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_191</name>
+      <pose>-79.84 30.77 -17.96 0 0 0.650</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_192</name>
+      <pose>-114.51 -44.52 -4.45 0 0 2.875</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_193</name>
+      <pose>-89.63 -41.32 -5.84 0 0 -1.802</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_194</name>
+      <pose>-101.52 67.65 -27.66 0 0 0.385</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_195</name>
+      <pose>-101.87 -2.97 -17.04 0 0 -1.473</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_196</name>
+      <pose>-105.94 40.36 -24.58 0 0 -2.630</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_197</name>
+      <pose>-118.72 40.59 -22.34 0 0 0.525</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_198</name>
+      <pose>-104.75 -68.54 -1.36 0 0 -0.006</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_199</name>
+      <pose>-80.28 2.76 -11.83 0 0 2.712</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_200</name>
+      <pose>-113.50 -2.70 -17.51 0 0 0.130</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_201</name>
+      <pose>-79.59 -39.69 -3.74 0 0 -2.755</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_202</name>
+      <pose>-105.72 57.35 -26.48 0 0 -1.920</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_203</name>
+      <pose>-90.86 -16.31 -9.40 0 0 2.379</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_204</name>
+      <pose>-84.30 40.34 -22.79 0 0 -1.054</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_205</name>
+      <pose>-114.73 16.52 -18.81 0 0 0.737</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_206</name>
+      <pose>-103.17 29.86 -23.61 0 0 -0.286</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_207</name>
+      <pose>-91.66 25.54 -22.09 0 0 0.662</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_208</name>
+      <pose>-84.10 59.11 -24.44 0 0 0.894</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_209</name>
+      <pose>-93.59 3.01 -16.92 0 0 0.077</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_210</name>
+      <pose>-115.25 -58.18 -3.24 0 0 -2.427</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_211</name>
+      <pose>-115.82 27.29 -21.15 0 0 2.071</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_212</name>
+      <pose>-83.68 -14.48 -7.39 0 0 1.157</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_213</name>
+      <pose>-84.19 -53.20 -2.97 0 0 -2.947</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_214</name>
+      <pose>-91.99 12.26 -18.99 0 0 1.464</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_215</name>
+      <pose>-93.63 -84.92 -0.32 0 0 -0.376</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_216</name>
+      <pose>-114.70 53.63 -24.84 0 0 2.034</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_217</name>
+      <pose>-101.42 -85.35 0.29 0 0 1.429</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_218</name>
+      <pose>-106.24 10.75 -19.25 0 0 0.764</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_219</name>
+      <pose>-94.71 -24.75 -10.75 0 0 -2.397</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_220</name>
+      <pose>-113.32 -30.45 -8.66 0 0 0.047</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_221</name>
+      <pose>-103.41 85.52 -28.02 0 0 -3.021</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_222</name>
+      <pose>-106.24 -12.45 -16.44 0 0 2.730</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_223</name>
+      <pose>-82.25 -81.21 -0.28 0 0 -0.243</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_224</name>
+      <pose>-80.11 81.78 -23.66 0 0 1.430</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_225</name>
+      <pose>-91.89 43.70 -24.91 0 0 -0.033</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_226</name>
+      <pose>-113.31 81.05 -25.84 0 0 1.212</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_227</name>
+      <pose>-102.20 -26.25 -12.84 0 0 -1.941</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_228</name>
+      <pose>-114.92 -81.37 0.09 0 0 0.519</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_229</name>
+      <pose>13.47 -84.36 7.81 0 0 1.871</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_230</name>
+      <pose>-109.69 -87.71 0.32 0 0 -1.805</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_231</name>
+      <pose>69.69 -86.36 22.37 0 0 -0.157</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_232</name>
+      <pose>53.64 85.18 -0.27 0 0 0.763</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_233</name>
+      <pose>-69.99 -87.38 -0.18 0 0 2.669</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_234</name>
+      <pose>42.98 -85.35 14.47 0 0 0.384</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_235</name>
+      <pose>-44.14 87.96 -20.66 0 0 -1.036</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_236</name>
+      <pose>57.08 -86.68 21.11 0 0 1.186</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_237</name>
+      <pose>29.06 -86.62 10.70 0 0 -0.903</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_238</name>
+      <pose>1.52 87.47 -9.30 0 0 -0.856</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_239</name>
+      <pose>-40.14 -85.83 -0.13 0 0 3.125</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_240</name>
+      <pose>-54.56 -85.97 -0.33 0 0 -2.766</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_241</name>
+      <pose>0.32 -84.24 6.09 0 0 1.358</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_242</name>
+      <pose>81.98 86.52 1.36 0 0 -0.199</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+
+    <!-- Local outer-ring pine fill around the Mars Gale vehicle spawn area. -->
+    <include>
+      <name>mars_gale_pine_direct_fill_243</name>
+      <pose>27.74 -66.62 8.05 0 0 -1.926</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_244</name>
+      <pose>-2.37 -70.73 2.41 0 0 -2.284</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_245</name>
+      <pose>6.94 -70.68 3.97 0 0 3.043</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_246</name>
+      <pose>-13.85 -43.91 -1.26 0 0 -1.354</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_247</name>
+      <pose>5.68 -62.91 2.41 0 0 2.159</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_248</name>
+      <pose>38.70 -31.27 2.79 0 0 -0.803</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_249</name>
+      <pose>-2.30 -20.75 -0.35 0 0 0.571</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_250</name>
+      <pose>-10.61 -65.10 1.01 0 0 -0.808</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_251</name>
+      <pose>36.05 -59.99 8.17 0 0 -0.688</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_252</name>
+      <pose>24.48 -57.35 4.57 0 0 1.214</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_253</name>
+      <pose>26.50 3.68 0.35 0 0 1.010</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_254</name>
+      <pose>6.70 0.39 2.75 0 0 -2.637</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_255</name>
+      <pose>-25.68 -10.73 -0.60 0 0 -0.596</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_256</name>
+      <pose>-13.37 -53.56 -0.77 0 0 -1.274</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_257</name>
+      <pose>-28.85 -40.65 -1.87 0 0 1.175</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_258</name>
+      <pose>43.49 -20.37 1.95 0 0 2.190</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_259</name>
+      <pose>33.68 26.57 0.45 0 0 -0.105</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_260</name>
+      <pose>-10.26 18.58 0.66 0 0 -0.518</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_261</name>
+      <pose>-44.43 0.39 -3.52 0 0 -2.122</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_262</name>
+      <pose>-15.81 22.36 -0.51 0 0 -2.661</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_263</name>
+      <pose>-2.05 19.43 -0.31 0 0 2.601</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_264</name>
+      <pose>-35.13 -29.43 1.82 0 0 -2.693</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_265</name>
+      <pose>19.89 7.25 2.36 0 0 -1.079</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_266</name>
+      <pose>-25.68 21.30 -1.63 0 0 -2.353</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+    <include>
+      <name>mars_gale_pine_direct_fill_267</name>
+      <pose>21.08 38.42 -1.74 0 0 -0.467</pose>
+      <uri>model://pine_tree</uri>
+    </include>
+  </world>
+</sdf>

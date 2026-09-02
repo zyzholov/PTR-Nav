@@ -1,0 +1,31 @@
+/**:
+  ros__parameters:
+    # Shared NEOS physical footprint for real deployment.
+    vehicle.length: 0.840
+    vehicle.width: 0.626
+    vehicle.height: 0.338
+    vehicle.wheel_base: 0.535
+    vehicle.track_width: 0.547
+
+    frame_id: "map"
+    publish_period_sec: 0.05
+    marker_lifetime_sec: 0.30
+
+    mesh.resource: "package://neos_description/meshes/car.dae"
+    mesh.use_embedded_materials: true
+    mesh.alpha: 0.96
+    mesh.scale_x: 0.833
+    mesh.scale_y: 0.816
+    mesh.scale_z: 0.878
+    mesh.offset_x: 0.0
+    mesh.offset_y: 0.0
+    mesh.offset_z: 0.0
+
+    base_to_chassis_center.x: 0.0
+    base_to_chassis_center.y: 0.0
+    base_to_chassis_center.z: 0.0
+    wheel_center_z: -0.04
+    footprint_z: -0.16
+    heading_arrow_z: 0.24
+    show_heading_arrow: true
+    show_lidar_hint: true

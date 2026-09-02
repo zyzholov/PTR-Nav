@@ -1,0 +1,86 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+    use_pcd_prior: false
+    # FAST_LIO publishes a rolling local submap in map frame.
+    cloud_is_local_map: true
+    # /cloud_local_map is already FAST_LIO's own rolling local map snapshot.
+    # Re-accumulating it here double-counts cells and creates false obstacles.
+    local_map_sliding_window_fusion: false
+    publish_on_cloud: false
+    publish_rate_hz: 35.0
+    publish_internal_visual_clouds: true
+    elevation_visual_fill_missing: true
+    elevation_visual_fill_radius_m: 0.55
+    sdf_visual_max_dist: 2.8
+    # Lift near-obstacle cells in RViz so the SDF cloud is visually 3D.
+    sdf_visual_height_scale: 0.10
+    sdf_visualize_obstacle_columns: true
+    sdf_obstacle_column_step: 0.12
+    sdf_obstacle_column_max_height: 4.0
+    publish_overhead_cloud: true
+    overhead_min_clearance_m: 0.20
+    overhead_cloud_max_points: 80000
+    sdf_use_terrain_hard_obstacles: false
+    visualize_obstacle_tops: false
+    use_pcd_vertical_obstacles: false
+    min_points_for_traversability: 3
+
+    grid_size_x: 140
+    grid_size_y: 140
+    viz_grid_size_x: 110
+    viz_grid_size_y: 110
+    resolution: 0.2
+    yaw_resolution: 6.0
+    # /cloud_local_map is already a bounded local submap in map frame.
+    sensor_range: 0.0
+    min_var: 0.001
+    max_var: 1.0
+    cache_size: 95
+
+    sdf_obstacle_slope: 1.10
+    sdf_hard_obstacle_slope: 1.65
+    sdf_obstacle_curvature: 1.00
+    sdf_hard_obstacle_curvature: 1.80
+    step_height_soft: 0.22
+    step_height_hard: 0.50
+    traversable_slope_free: 0.55
+    traversable_curvature_free: 0.45
+    traversable_step_free: 0.09
+    traversability_risk_gamma: 2.40
+    risk_weight_slope: 0.22
+    risk_weight_curvature: 0.33
+    risk_weight_step_height: 0.45
+    risk_hard_threshold: 0.95
+    risk_vis_hard_threshold: 0.82
+    risk_visual_deadband: 0.30
+    risk_visual_gamma: 0.75
+    terrain_risk_scale: 0.05
+    terrain_risk_to_hard_obstacle: false
+    terrain_hardness_scale: 1.15
+    tree_risk_radius_m: 1.15
+    tree_hard_keepout_radius_m: 0.0
+    tree_risk_power: 2.0
+    non_tree_risk_cap: 0.12
+
+    obstacle_min_height: 0.28
+    obstacle_max_height: 1.45
+    obstacle_seed_max_height: 0.50
+    obstacle_min_points: 2
+    obstacle_hit_increment: 4
+    obstacle_count_decay: 0.98
+    obstacle_persistence_misses: 18
+    obstacle_ground_search_radius_m: 0.32
+    obstacle_footprint_filter_enable: true
+    obstacle_footprint_filter_radius_m: 0.45
+    obstacle_footprint_max_neighbors: 10
+    obstacle_footprint_line_width_cells: 2
+    vertical_obstacle_inflation_m: 0.45
+    ego_clear_radius: 0.62
+    ego_body_filter_enable: true
+    ego_body_filter_front_m: 1.10
+    ego_body_filter_back_m: 0.85
+    ego_body_filter_half_width_m: 0.68
+    ego_body_filter_z_min_m: -0.55
+    ego_body_filter_z_max_m: 1.40
+    map_padding_m: 5.0

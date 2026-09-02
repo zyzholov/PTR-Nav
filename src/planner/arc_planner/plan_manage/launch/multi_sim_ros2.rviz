@@ -1,0 +1,72 @@
+Panels:
+  - Class: rviz_common::Views
+    Help Height: 78
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz_common::Selection
+    Name: Selection
+  - Class: rviz_common::ToolProperties
+    Expanded:
+      - /2D Goal Pose1
+      - /Publish Point1
+    Name: Tool Properties
+    Splitter Ratio: 0.588679
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins::Grid
+      Enabled: true
+      Name: Grid
+      Topic: /clicked_point
+      Value: true
+    - Class: rviz_default_plugins::TF
+      Enabled: false
+      Name: TF
+      Value: false
+  Enabled: true
+  Global Options:
+    Background Color: {r: 48, g: 48, b: 48}
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins::Interact
+      Hide Inactive: true
+    - Class: rviz_default_plugins::MoveCamera
+    - Class: rviz_default_plugins::Select
+    - Class: rviz_default_plugins::FocusCamera
+    - Class: rviz_default_plugins::Measure
+      Line color: {r: 128, g: 128, b: 0}
+    - Class: rviz_default_plugins::SetInitialPose
+      Topic: /initialpose
+    - Class: rviz_default_plugins::SetGoal
+      Topic: /goal_pose
+    - Class: rviz_default_plugins::PublishPoint
+      Single click publishing: true
+      Topic: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins::Orbit
+      Distance: 20
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.06
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point: {x: 0, y: 0, z: 0}
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.785398
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz_default_plugins)
+      Yaw: 0.785398
+    Saved Views: {}
+Window Geometry:
+  Height: 1016
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd0000000100000000000002c1000003bffc0200000007fb0000001200530065006c0065006300740069006f006e000000003d0000009e0000005c00fffffffb0000001e0054006f006f006c002000500072006f0070006500720074006900650073000000003d000001b30000003f00fffffffb000000120056006900650077007300200054006100620000000298000001a40000010000fffffffb0000001200540069006d0065002000540061006200000002020000003e0000003f00fffffffb000000120052006500630065006e00740200000265000000e60000015f00ffffff000000010000020c000003bffc0200000003fb0000001600440065007000740068002000460069006500740064000000003d0000020c0000003f00fffffffb0000001a0050006f0069006e00740043006c006f007500640032000000024f0000020c0000003f00fffffffb000000120050006100740068002000500061006e0065006c00000002040000015a0000006400fffffffc00000345000000e60000003f00fffffffb00000052005300450032004700720069006400000002000000010000005c00fffffffb0000001e004d0061007200' |head -c 100

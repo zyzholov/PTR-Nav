@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>se2_grid_rviz_plugin</name>
+  <version>0.0.0</version>
+  <description>RViz plugin for displaying se2 grid messages.</description>
+  <maintainer email="xulon666@gmail.com">Long Xu</maintainer>
+  <license>BSD</license>
+  <author email="xulon666@gmail.com">Long Xu</author>
+  <author>Long Xu</author>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <build_depend>qtbase5-dev</build_depend>
+  <build_depend>rviz2</build_depend>
+  <build_depend>se2_grid_ros</build_depend>
+  <build_depend>se2_grid_msgs</build_depend>
+  <exec_depend>libqt5-core</exec_depend>
+  <exec_depend>libqt5-gui</exec_depend>
+  <exec_depend>libqt5-widgets</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>se2_grid_ros</exec_depend>
+  <exec_depend>se2_grid_msgs</exec_depend>
+  <export>
+      <rviz2_plugin plugin="${prefix}/plugin_description.xml"/>
+  </export>
+</package>

@@ -1,0 +1,88 @@
+/**:
+  ros__parameters:
+    # Real NEOS profile. Input is FAST_LIO /cloud_registered in map frame.
+    use_sim_time: false
+    use_pcd_prior: false
+    cloud_is_local_map: false
+    local_map_sliding_window_fusion: false
+    publish_on_cloud: false
+    publish_rate_hz: 15.0
+    visual_publish_rate_hz: 9.0
+    publish_internal_visual_clouds: true
+    elevation_visual_fill_missing: true
+    elevation_visual_fill_radius_m: 0.55
+    sdf_visual_max_dist: 2.8
+    sdf_visual_height_scale: 0.10
+    sdf_visualize_obstacle_columns: true
+    sdf_obstacle_column_step: 0.16
+    sdf_obstacle_column_max_height: 1.5
+    publish_overhead_cloud: false
+    overhead_min_clearance_m: 0.20
+    overhead_cloud_max_points: 12000
+    sdf_use_terrain_hard_obstacles: false
+    visualize_obstacle_tops: false
+    use_pcd_vertical_obstacles: false
+    min_points_for_traversability: 3
+
+    grid_size_x: 104
+    grid_size_y: 104
+    viz_grid_size_x: 72
+    viz_grid_size_y: 72
+    resolution: 0.2
+    yaw_resolution: 6.0
+    sensor_range: 0.0
+    min_var: 0.001
+    max_var: 1.0
+    cache_size: 95
+
+    # NEOS is limited to about 100 mm obstacle traversal. Keep step/height
+    # thresholds stricter than the Gazebo Hunter profile.
+    sdf_obstacle_slope: 0.95
+    sdf_hard_obstacle_slope: 1.35
+    sdf_obstacle_curvature: 0.85
+    sdf_hard_obstacle_curvature: 1.35
+    step_height_soft: 0.07
+    step_height_hard: 0.14
+    traversable_slope_free: 0.35
+    traversable_curvature_free: 0.30
+    traversable_step_free: 0.04
+    traversability_risk_gamma: 2.20
+    risk_weight_slope: 0.25
+    risk_weight_curvature: 0.30
+    risk_weight_step_height: 0.45
+    risk_hard_threshold: 0.92
+    risk_vis_hard_threshold: 0.86
+    risk_visual_deadband: 0.30
+    risk_visual_gamma: 2.5
+    terrain_risk_scale: 0.02
+    terrain_risk_to_hard_obstacle: true
+    terrain_hardness_scale: 1.10
+    tree_risk_radius_m: 0.38
+    tree_hard_keepout_radius_m: 0.0
+    tree_risk_power: 3.0
+    non_tree_risk_cap: 0.08
+
+    obstacle_min_height: 0.12
+    obstacle_max_height: 1.45
+    obstacle_seed_max_height: 0.42
+    obstacle_min_points: 2
+    obstacle_hit_increment: 4
+    obstacle_count_decay: 0.97
+    obstacle_persistence_misses: 18
+    obstacle_ground_search_radius_m: 0.30
+    obstacle_footprint_filter_enable: true
+    obstacle_footprint_filter_radius_m: 0.42
+    obstacle_footprint_max_neighbors: 10
+    obstacle_footprint_line_width_cells: 2
+    vertical_obstacle_inflation_m: 0.45
+
+    # Assumes base_link is near the vehicle geometric center. Re-measure these
+    # if base_link is moved to rear axle center or IMU projection.
+    ego_clear_radius: 0.0
+    ego_body_filter_enable: true
+    ego_body_filter_front_m: 0.45
+    ego_body_filter_back_m: 0.45
+    ego_body_filter_half_width_m: 0.35
+    ego_body_filter_z_min_m: -0.35
+    ego_body_filter_z_max_m: 0.75
+    map_padding_m: 5.0

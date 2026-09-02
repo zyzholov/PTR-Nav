@@ -1,0 +1,597 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com)
+     Commit Version: 1.6.0-1-g15f4949  Build Version: 1.6.7594.29634
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot name="hunter_se" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="drive_mode" default="hunter_joint" />
+  <xacro:arg name="terrain_lidar_profile" default="normal" />
+  <xacro:arg name="enable_livox" default="true" />
+  <xacro:arg name="enable_d455" default="true" />
+  <xacro:include filename="$(find hunter_se_gazebo)/xacro/hunter_se.gazebo" />
+  <xacro:include filename="$(find ros2_livox_simulation)/urdf/mid360.xacro" />
+  <xacro:property name="drive_mode_value" value="$(arg drive_mode)" />
+  <xacro:property name="terrain_lidar_profile_value" value="$(arg terrain_lidar_profile)" />
+  <xacro:property name="rubicon_lidar_profile" value="${terrain_lidar_profile_value == 'rubicon'}" />
+  <xacro:property name="mars_lidar_profile" value="${terrain_lidar_profile_value == 'mars_gale'}" />
+  <xacro:property name="livox_scan_samples" value="${16000 if mars_lidar_profile else 24000}" />
+  <xacro:property name="livox_scan_downsample" value="${4 if mars_lidar_profile else 3}" />
+  <xacro:property name="livox_ray_horizontal_samples" value="${80 if mars_lidar_profile else 100}" />
+  <xacro:property name="livox_ray_vertical_samples" value="${240 if mars_lidar_profile else 360}" />
+  <xacro:property name="d455_hfov" value="1.51843645" />
+  <xacro:property name="d455_width" value="640" />
+  <xacro:property name="d455_height" value="360" />
+  <xacro:property name="d455_update_rate" value="15.0" />
+  <xacro:property name="front_wheel_radius" value="0.1348" />
+  <xacro:property name="front_wheel_width" value="0.0987" />
+  <xacro:property name="rear_wheel_radius" value="0.13495" />
+  <xacro:property name="rear_wheel_width" value="0.1540" />
+  <xacro:property name="locked_planar_drive_mode" value="${drive_mode_value == 'planar'}" />
+  <xacro:property name="planar_visual_drive_mode" value="${drive_mode_value == 'planar_visual'}" />
+  <xacro:property name="steering_joint_limit" value="${0.0 if locked_planar_drive_mode else 0.69}" />
+  <xacro:property name="steering_joint_effort" value="${0.0 if locked_planar_drive_mode else 200.0}" />
+  <xacro:property name="steering_joint_velocity" value="${0.0 if locked_planar_drive_mode else 3.5}" />
+  <xacro:property name="steering_joint_damping" value="${25.0 if locked_planar_drive_mode else (10.0 if planar_visual_drive_mode else 4.0)}" />
+  <xacro:property name="steering_joint_friction" value="${8.0 if locked_planar_drive_mode else (2.0 if planar_visual_drive_mode else 0.3)}" />
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.0374140021041951 -0.000373005187591258 -0.0771282894414029"
+        rpy="0 0 0" />
+      <mass
+        value="24.73" />
+      <inertia
+        ixx="0.123215829336501"
+        ixy="-2.51201031615063E-06"
+        ixz="0.00480100638469038"
+        iyy="0.219144715482931"
+        iyz="-1.0329581476775E-05"
+        izz="0.313606030126045" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file://$(find hunter_se_description)/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0.0808 0 -0.1625"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.7875 0.4618 0.04" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="fr_steer_left_link">
+    <inertial>
+      <origin
+        xyz="-0.0002776492198312 0.0163539773588368 4.97346169803237E-09"
+        rpy="0 0 0" />
+      <mass
+        value="3.149" />
+      <inertia
+        ixx="0.0176012120277572"
+        ixy="-0.000255822069720042"
+        ixz="4.89135197289253E-08"
+        iyy="0.0326650592194903"
+        iyz="-5.05595058544686E-10"
+        izz="0.0175968940276803" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.001 0.001 0.001"/>
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.223529411764706 0.223529411764706 0.223529411764706 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fr_steer_left_joint"
+    type="revolute">
+    <origin
+      xyz="0.34058 0.24619 -0.1535"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="fr_steer_left_link" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="${-steering_joint_limit}"
+      upper="${steering_joint_limit}"
+      effort="${steering_joint_effort}"
+      velocity="${steering_joint_velocity}" />
+    <dynamics damping="${steering_joint_damping}" friction="${steering_joint_friction}" />
+  </joint>
+  <link
+    name="fr_left_link">
+    <inertial>
+      <origin
+        xyz="-3.5837499634539E-10 4.97346158701006E-09 -0.016356334080185"
+        rpy="0 0 0" />
+      <mass
+        value="3.149" />
+      <inertia
+        ixx="0.0175968687768806"
+        ixy="4.88978895069836E-08"
+        ixz="2.59363668202492E-09"
+        iyy="0.0175968940276803"
+        iyz="1.33582951478864E-09"
+        izz="0.0326694024703669" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file://$(find hunter_se_description)/meshes/fr_left_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.223529411764706 0.223529411764706 0.223529411764706 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0.0 0.0 -0.0214"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="${front_wheel_radius}" length="${front_wheel_width}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fr_left_joint"
+    type="continuous">
+    <origin
+      xyz="0 0 0"
+      rpy="1.5708 0 0" />
+    <parent
+      link="fr_steer_left_link" />
+    <child
+      link="fr_left_link" />
+    <axis
+      xyz="0 0 -1" />
+    <dynamics damping="0.35" friction="0.08" />
+  </joint>
+  <link
+    name="fr_steer_right_link">
+    <inertial>
+      <origin
+        xyz="0.000274981985673328 -0.0163540222836661 -3.24802407192237E-11"
+        rpy="0 0 0" />
+      <mass
+        value="3.149" />
+      <inertia
+        ixx="0.0176011208398464"
+        ixy="-0.000253357559513646"
+        ixz="8.00593138443467E-09"
+        iyy="0.0326650290732704"
+        iyz="5.65898650063874E-11"
+        izz="0.0175967847225325" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.001 0.001 0.001"/>
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fr_steer_right_joint"
+    type="revolute">
+    <origin
+      xyz="0.34219 -0.24619 -0.1535"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="fr_steer_right_link" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="${-steering_joint_limit}"
+      upper="${steering_joint_limit}"
+      effort="${steering_joint_effort}"
+      velocity="${steering_joint_velocity}" />
+    <dynamics damping="${steering_joint_damping}" friction="${steering_joint_friction}" />
+  </joint>
+  <link
+    name="fr_right_link">
+    <inertial>
+      <origin
+        xyz="0.00027498198567355 3.24801296969213E-11 -0.0163540222836661"
+        rpy="0 0 0" />
+      <mass
+        value="3.149" />
+      <inertia
+        ixx="0.0176011208398464"
+        ixy="-8.00593138518773E-09"
+        ixz="-0.000253357559513648"
+        iyy="0.0175967847225325"
+        iyz="-5.65898177386586E-11"
+        izz="0.0326650290732703" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file://$(find hunter_se_description)/meshes/fr_right_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.223529411764706 0.223529411764706 0.223529411764706 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0.0 0.0 -0.0210"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="${front_wheel_radius}" length="${front_wheel_width}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fr_right_joint"
+    type="continuous">
+    <origin
+      xyz="0 0 0"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="fr_steer_right_link" />
+    <child
+      link="fr_right_link" />
+    <axis
+      xyz="0 0 1" />
+    <dynamics damping="0.35" friction="0.08" />
+  </joint>
+  
+  <link
+    name="re_left_link">
+    <inertial>
+      <origin
+        xyz="1.245E-09 1.7252E-06 -0.010284"
+        rpy="0 0 0" />
+      <mass
+        value="3.149" />
+      <inertia
+        ixx="0.018208"
+        ixy="-1.1815E-10"
+        ixz="-4.2619E-10"
+        iyy="0.018208"
+        iyz="-5.0277E-07"
+        izz="0.03306" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file://$(find hunter_se_description)/meshes/re_left_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.37647 0.37647 0.37647 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0.0 0.0 0.0145"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="${rear_wheel_radius}" length="${rear_wheel_width}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="re_left_joint"
+    type="continuous">
+    <origin
+      xyz="-0.2078 0.252 -0.158"
+      rpy="1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="re_left_link" />
+    <axis
+      xyz="0 0 -1" />
+    <dynamics damping="0.35" friction="0.08" />
+  </joint>
+  <link
+    name="re_right_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="3.149" />
+      <inertia
+        ixx="0.0176011208398464"
+        ixy="-8.00593138518773E-09"
+        ixz="-0.000253357559513648"
+        iyy="0.0175967847225325"
+        iyz="-5.65898177386586E-11"
+        izz="0.0326650290732703" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file://$(find hunter_se_description)/meshes/re_right_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0.0 0.0 0.0145"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="${rear_wheel_radius}" length="${rear_wheel_width}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="re_right_joint"
+    type="continuous">
+    <origin
+      xyz="-0.2078 -0.252 -0.158"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="re_right_link" />
+    <axis
+      xyz="0 0 1" />
+    <dynamics damping="0.35" friction="0.08" />
+  </joint>
+
+
+   <link name="steering_wheel_link">
+        <inertial>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+            <mass value="1"/>
+            <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
+        </inertial>
+        <visual>
+            <origin xyz="-0.23 -0.194 0.1" rpy="1.57 0 3.14 " />
+            <geometry>
+                <cylinder radius="0.001" length="0.001"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0.008" rpy="0 0 0" />
+            <geometry>
+                <cylinder radius="0.001" length="0.001"/>
+            </geometry>
+        </collision>
+    </link>
+    <joint name="steering_whee_joint" type="revolute">
+        <origin xyz="-0.23 0.206 -0.1" rpy="0 0 0" />
+        <parent link="base_link"/>
+        <child link="steering_wheel_link"/>
+        <axis xyz="0 0 1" rpy="0 0 0" />
+        <limit effort="5" velocity="6.28"  lower="-2.1" upper="2.1" />
+    </joint>
+
+
+ 
+
+  <xacro:hunter_se_gazebo_plugins ns="hunter_se" drive_mode="$(arg drive_mode)" />
+
+  <link name="imu_link">
+    <inertial>
+      <mass value="0.05" />
+      <inertia ixx="0.00002" ixy="0.0" ixz="0.0" iyy="0.00002" iyz="0.0" izz="0.00002" />
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.02 0.02 0.02" />
+      </geometry>
+      <material name="imu_black">
+        <color rgba="0.15 0.15 0.15 1.0" />
+      </material>
+    </visual>
+  </link>
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link" />
+    <child link="imu_link" />
+    <origin xyz="0.18 0.12 0.250" rpy="0 0 0" />
+  </joint>
+
+  <xacro:if value="$(arg enable_livox)">
+    <xacro:mid360
+      name="livox"
+      parent="base_link"
+      topic="/livox/lidar"
+      self_filter_enable="1"
+      self_filter_sensor_x="0.189"
+      self_filter_sensor_y="0.0"
+      self_filter_sensor_z="0.298"
+      self_filter_sensor_yaw="0.0"
+      self_filter_min_x="-0.44"
+      self_filter_max_x="0.52"
+      self_filter_min_y="-0.34"
+      self_filter_max_y="0.34"
+      self_filter_min_z="-0.26"
+      self_filter_max_z="0.38"
+      scan_samples="${livox_scan_samples}"
+      scan_downsample="${livox_scan_downsample}"
+      sensor_update_rate="10"
+      ray_horizontal_samples="${livox_ray_horizontal_samples}"
+      ray_vertical_samples="${livox_ray_vertical_samples}"
+      laser_max_range_override="30.0"
+      terrain_mode="false"
+      terrain_heightmap=""
+      terrain_ray_step="0.35">
+      <origin xyz="0.18 0.0 0.250" rpy="0 0.436332313 0" />
+    </xacro:mid360>
+  </xacro:if>
+
+  <xacro:if value="$(arg enable_d455)">
+    <link name="camera_link">
+      <inertial>
+        <mass value="0.072" />
+        <inertia ixx="0.000025" ixy="0.0" ixz="0.0" iyy="0.000004" iyz="0.0" izz="0.000026" />
+      </inertial>
+      <visual>
+        <geometry>
+          <box size="0.026 0.124 0.029" />
+        </geometry>
+        <material name="d455_dark">
+          <color rgba="0.04 0.045 0.05 1.0" />
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="0.026 0.124 0.029" />
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="camera_joint" type="fixed">
+      <parent link="base_link" />
+      <child link="camera_link" />
+      <origin xyz="0.36 0.0 0.30" rpy="0 0 0" />
+    </joint>
+
+    <link name="camera_color_frame" />
+    <joint name="camera_color_joint" type="fixed">
+      <parent link="camera_link" />
+      <child link="camera_color_frame" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
+    </joint>
+
+    <link name="camera_color_optical_frame" />
+    <joint name="camera_color_optical_joint" type="fixed">
+      <parent link="camera_color_frame" />
+      <child link="camera_color_optical_frame" />
+      <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679" />
+    </joint>
+
+    <link name="camera_depth_frame" />
+    <joint name="camera_depth_joint" type="fixed">
+      <parent link="camera_link" />
+      <child link="camera_depth_frame" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
+    </joint>
+
+    <link name="camera_depth_optical_frame" />
+    <joint name="camera_depth_optical_joint" type="fixed">
+      <parent link="camera_depth_frame" />
+      <child link="camera_depth_optical_frame" />
+      <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679" />
+    </joint>
+
+    <gazebo reference="camera_link">
+      <sensor name="d455_rgbd" type="depth">
+        <always_on>true</always_on>
+        <update_rate>${d455_update_rate}</update_rate>
+        <visualize>false</visualize>
+        <camera>
+          <horizontal_fov>${d455_hfov}</horizontal_fov>
+          <image>
+            <width>${d455_width}</width>
+            <height>${d455_height}</height>
+            <format>R8G8B8</format>
+          </image>
+          <depth_camera>
+          </depth_camera>
+          <clip>
+            <near>0.30</near>
+            <far>20.0</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+        <plugin name="d455_rgbd_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/camera</namespace>
+            <remapping>camera/image_raw:=camera/color/image_raw</remapping>
+            <remapping>camera/camera_info:=camera/color/camera_info</remapping>
+            <remapping>camera/depth/image_raw:=camera/depth/image_rect_raw</remapping>
+            <remapping>camera/depth/camera_info:=camera/depth/camera_info</remapping>
+            <remapping>camera/points:=camera/depth/color/points</remapping>
+          </ros>
+          <camera_name>camera</camera_name>
+          <frame_name>camera_color_optical_frame</frame_name>
+          <min_depth>0.30</min_depth>
+          <max_depth>20.0</max_depth>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:if>
+
+  <gazebo reference="imu_link">
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>200</update_rate>
+      <visualize>false</visualize>
+      <topic>/livox/imu</topic>
+      <plugin name="hunter_se_imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+        <ros>
+          <remapping>~/out:=/livox/imu</remapping>
+        </ros>
+        <frame_name>imu_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+</robot>

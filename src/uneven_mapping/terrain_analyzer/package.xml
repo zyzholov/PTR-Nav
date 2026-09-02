@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>terrain_analyzer</name>
+  <version>0.0.0</version>
+  <description>Generates an se2 grid map from distance measurements and robot pose information.</description>
+  <maintainer email="xulon666@gmail.com">Long Xu</maintainer>
+  <license>BSD</license>
+  <url type="website">https://github.com/ZJU-FAST-Lab/uneven_mapping</url>
+  <url type="bugtracker">https://github.com/ZJU-FAST-Lab/uneven_mapping/issues</url>
+  <author email="xulon666@gmail.com">Long Xu</author>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>boost</depend>
+  <depend>eigen</depend>
+  <depend>se2_grid_core</depend>
+  <depend>se2_grid_msgs</depend>
+  <depend>se2_grid_ros</depend>
+  <depend>message_filters</depend>
+  <depend>pcl_ros</depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>tf2</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>pluginlib</depend>
+
+  <depend>rosidl_default_generators</depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <terrain_analyzer plugin="${prefix}/post_processors.xml" />
+  </export>
+
+</package>

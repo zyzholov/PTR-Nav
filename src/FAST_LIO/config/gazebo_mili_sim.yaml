@@ -1,0 +1,52 @@
+/**:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 1
+        max_iteration: 4
+        filter_size_surf: 0.4
+        filter_size_map: 0.5
+        cube_side_length: 400.0
+        runtime_pos_log_enable: false
+        map_file_path: "./gazebo_fastlio_map.pcd"
+
+        common:
+            lid_topic: "/livox/lidar"
+            imu_topic: "/livox/imu"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+
+        preprocess:
+            # PointCloud2 path in this FAST_LIO fork.
+            lidar_type: 5
+            scan_line: 8
+            scan_rate: 8
+            timestamp_unit: 3
+            blind: 0.8
+
+        mapping:
+            acc_cov: 0.08
+            gyr_cov: 0.08
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 80.0
+            extrinsic_est_en: false
+            # FAST_LIO uses p_imu = R_LI * p_lidar + T_LI.
+            # Gazebo mount: lidar_link at [0.28, 0.00, 0.68] with +25 deg pitch
+            # (front/down), imu_link at [0.28, 0.12, 0.68] with no rotation.
+            extrinsic_T: [0.0, -0.12, 0.0]
+            extrinsic_R: [0.906307787, 0.0, 0.422618262,
+                          0.0, 1.0, 0.0,
+                          -0.422618262, 0.0, 0.906307787]
+
+        publish:
+            path_en: true
+            effect_map_en: false
+            map_en: true
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: false
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1

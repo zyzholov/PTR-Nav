@@ -1,0 +1,220 @@
+
+material UrbanTile/RockPile_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture RockPile_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/Bush01_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Bush01_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/TerrainRocky_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture TerrainRocky_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/Bush02_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Bush02_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/Rock01_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Rock01_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/Rock02_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Rock02_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/TreeJeffreyPine_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture TreeJeffreyPine_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/Bark_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Bark_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/Vista_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Vista_Albedo.png
+      }
+    }
+  }
+}
+material UrbanTile/Stump_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Stump_Albedo.png
+      }
+    }
+  }
+}
+material UrbanTile/Roots_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Roots_Albedo.png
+      }
+    }
+  }
+}
+material UrbanTile/Log_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Log_Albedo.png
+      }
+    }
+  }
+}
+material UrbanTile/Randy_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture RescueRandy_Diffuse.png
+      }
+    }
+  }
+}
+material UrbanTile/MarkerBlue_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      ambient 0.05 0.20 0.80 1
+      diffuse 0.05 0.20 0.80 1
+    }
+  }
+}
+material UrbanTile/TreeBillboard_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture PineBillboard_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/Bark_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture Bark_Albedo.png
+        }
+      }
+    }
+  }
+material UrbanTile/TreePine_Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture TreePine_Albedo.png
+        }
+      }
+    }
+  }

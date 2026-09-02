@@ -1,0 +1,46 @@
+/**:
+  ros__parameters:
+    # Gazebo Hunter joint drive consumes Twist.angular.z as front steering angle.
+    # Keep this false unless Gazebo is launched with drive_mode:=planar_visual.
+    mpc/cmd_is_yaw_rate: false
+    mpc/use_nmpc_solver: false
+
+    mpc/dt: 0.10
+    mpc/predict_steps: 10
+    mpc/max_steer: 0.5236       # Match planner/Gazebo Hunter steering limit
+    mpc/max_dsteer: 2.80        # Command limiter now uses actual control period
+    mpc/max_speed: 2.5
+    mpc/min_speed: -2.0
+    mpc/reverse_speed_cap: 0.70
+    mpc/max_accel: 2.40
+    mpc/wheel_base: 0.549       # MUST match Gazebo wheel_base (0.549185)
+    mpc/delay_num: 0
+    mpc/test_mpc: false
+
+    mpc/enable_fallback_goal: false
+    mpc/fallback_block_after_planner_sec: 3.0
+    mpc/enable_aggressive_recovery: false
+    mpc/force_reverse_follow: true
+    mpc/reverse_follow_speed_floor: 0.16
+    mpc/reverse_hint_hold_sec: 4.5
+
+    mpc/planner_update_min_interval_sec: 0.08
+    mpc/planner_update_max_jump_m: 0.65
+    # With continuous replanning, the cautious speed cap is skipped because
+    # trajectories are refreshed before they expire. The vehicle can maintain
+    # its normal speed through trajectory switches.
+    mpc/continuous_replan_mode: true
+    mpc/replan_cautious_sec: 0.18
+    mpc/replan_cautious_speed_cap: 0.42
+    mpc/replan_cautious_dist_thresh: 0.55
+    mpc/replan_cautious_yaw_thresh: 0.60
+    mpc/replan_cautious_steer_thresh: 0.28
+    mpc/cmd_speed_scale: 1.00
+    mpc/turn_speed_steer_gain: 0.12     # less speed reduction in turns (was 0.18)
+    mpc/turn_speed_min_cap: 0.80        # higher minimum turn speed (was 0.40)
+    mpc/ref_projection_period_sec: 0.05
+    mpc/control_visualization_period_sec: 0.50
+
+    mpc/matrix_q: [80.0, 80.0, 18.0]    # slightly reduced from [100,100,25] — smoother tracking
+    mpc/matrix_r: [0.10, 0.02]            # moderate control penalty
+    mpc/matrix_rd: [5.0, 10.0]            # moderate rate penalty

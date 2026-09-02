@@ -1,0 +1,2 @@
+# This package is a compatibility layer for ROS1 catkin_simple
+# In ROS2, we use standard ament_cmake instead
