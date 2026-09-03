@@ -1,0 +1,55 @@
+fsgp_bgk_se2_node:
+  ros__parameters:
+    use_sim_time: true
+
+    input_fused_map_topic: /car_0_terrain_analyzer/fused_map
+    input_cloud_topic: /cloud_registered
+    odom_topic: /Odometry
+    output_fused_map_topic: /car_0_fsgp_bgk/fused_map
+    bgk_cloud_topic: /car_0_fsgp_bgk/bgk_traversability_cloud
+    seb_cloud_topic: /car_0_fsgp_bgk/seb_risk_cloud
+    frame_id: map
+
+    # The first integration stage only needs the existing fused_map. Keep the
+    # raw cloud subscription disabled until the FSGP training adapter is enabled.
+    subscribe_cloud: false
+
+    use_gpu: true
+    gpu_backend: auto
+    # 0 means reuse the input SE2Grid yaw discretization.
+    yaw_bins: 0
+
+    # BGK-style local Gaussian smoothing. This is a deterministic bridge for
+    # the FSGP-BGK integration and has CPU fallback when CuPy/CUDA is absent.
+    bgk_sigma_m: 0.45
+    bgk_radius_m: 1.20
+    variance_free: 0.01
+    variance_hard: 0.20
+    slope_free_rad: 0.10
+    max_slope_rad: 0.55
+    step_free_m: 0.04
+    max_step_m: 0.18
+
+    # Hunter SE footprint used by the SEB yaw sweep.
+    footprint_front: 0.42
+    footprint_back: 0.42
+    footprint_half_width: 0.313
+    footprint_margin: 0.10
+    footprint_samples_x: 5
+    footprint_samples_y: 5
+    pitch_free_rad: 0.08
+    roll_free_rad: 0.08
+    max_pitch_rad: 0.55
+    max_roll_rad: 0.45
+    min_support_ratio: 0.70
+
+    risk_fusion_mode: max
+    baseline_weight: 0.40
+    seb_weight: 0.45
+    uncertainty_weight: 0.15
+    unknown_risk: 0.85
+
+    publish_debug_clouds: true
+    debug_yaw_index: 0
+    debug_cloud_stride: 2
+    log_period_sec: 2.0

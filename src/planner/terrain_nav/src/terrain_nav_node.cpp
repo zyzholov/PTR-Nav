@@ -171,6 +171,9 @@ private:
 
     declare_parameter("risk_free_threshold", 0.08);
     declare_parameter("risk_hard_threshold", 0.58);
+    declare_parameter("risk_query_mode", "flat_2d");
+    declare_parameter("se2_risk_layer", "risk");
+    declare_parameter("hard_risk_layer", "baseline_risk");
     declare_parameter("unknown_cost", 60.0);
     declare_parameter("allow_unknown", true);
     declare_parameter("risk_weight", 3.0);
@@ -293,6 +296,9 @@ private:
 
     get_parameter("risk_free_threshold", risk_free_threshold_);
     get_parameter("risk_hard_threshold", risk_hard_threshold_);
+    get_parameter("risk_query_mode", risk_query_mode_);
+    get_parameter("se2_risk_layer", se2_risk_layer_);
+    get_parameter("hard_risk_layer", hard_risk_layer_);
     get_parameter("unknown_cost", unknown_cost_);
     get_parameter("allow_unknown", allow_unknown_);
     get_parameter("risk_weight", risk_weight_);
@@ -383,6 +389,8 @@ private:
     guide_path_cost_weight_ = std::clamp(guide_path_cost_weight_, 0.0, 0.50);
     guide_follow_weight_ = std::clamp(guide_follow_weight_, 0.0, 6.0);
     guide_heading_weight_ = std::clamp(guide_heading_weight_, 0.0, 3.0);
+    if (risk_query_mode_ != "se2_yaw")
+      risk_query_mode_ = "flat_2d";
     direct_curve_max_length_ratio_ = std::clamp(direct_curve_max_length_ratio_, 1.05, 3.0);
     direct_curve_max_lateral_ratio_ = std::clamp(direct_curve_max_lateral_ratio_, 0.15, 1.5);
     direct_curve_clearance_weight_ = std::clamp(direct_curve_clearance_weight_, 0.0, 20.0);
@@ -555,7 +563,7 @@ private:
 
   void rebuildCostmapLocked()
   {
-    if (!map_.exists("risk")) {
+    if (!map_.exists(se2_risk_layer_)) {
       width_ = height_ = 0;
       costs_.clear();
       hard_.clear();
@@ -591,8 +599,13 @@ private:
 
         double risk = 0.0;
         bool known = true;
+        const std::string costmap_risk_layer =
+          map_.exists(hard_risk_layer_) ? hard_risk_layer_ : se2_risk_layer_;
         try {
-          risk = map_.getValue("risk", Eigen::Vector3d(wx, wy, 0.0), se2_grid::InterpolationMethods::INTER_NEAREST);
+          risk = map_.getValue(
+            costmap_risk_layer,
+            Eigen::Vector3d(wx, wy, 0.0),
+            se2_grid::InterpolationMethods::INTER_NEAREST);
         } catch (...) {
           known = false;
         }
@@ -630,9 +643,9 @@ private:
     computeClearanceLocked();
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 3000,
-      "terrain_nav cost grid: size=%dx%d known=%d hard=%d max_risk=%.2f hard_thr=%.2f clearance=%.2f comfort=%.2f",
+      "terrain_nav cost grid: size=%dx%d known=%d hard=%d max_risk=%.2f hard_thr=%.2f clearance=%.2f comfort=%.2f risk_mode=%s",
       width_, height_, known_count, hard_count, max_risk, risk_hard_threshold_,
-      clearance_distance_, comfort_clearance_distance_);
+      clearance_distance_, comfort_clearance_distance_, risk_query_mode_.c_str());
   }
 
   void computeClearanceLocked()
@@ -711,7 +724,7 @@ private:
     return ix >= 0 && ix < width_ && iy >= 0 && iy < height_;
   }
 
-  CostQuery queryCostLocked(double x, double y) const
+  CostQuery queryCostLocked(double x, double y, double yaw = 0.0) const
   {
     CostQuery out;
     int ix = 0, iy = 0;
@@ -741,6 +754,30 @@ private:
     if (std::isfinite(out.clearance) && out.clearance < clearance_distance_) {
       const double margin = (clearance_distance_ - out.clearance) / std::max(1e-3, clearance_distance_);
       out.cost += clearance_weight_ * margin * margin;
+    }
+    if (risk_query_mode_ == "se2_yaw" &&
+        map_.exists(se2_risk_layer_) &&
+        map_.hasSO2(se2_risk_layer_))
+    {
+      try {
+        const double se2_risk = map_.getValue(
+          se2_risk_layer_,
+          Eigen::Vector3d(x, y, yaw),
+          se2_grid::InterpolationMethods::INTER_NEAREST);
+        if (std::isfinite(se2_risk))
+        {
+          out.risk = std::max(out.risk, std::clamp(se2_risk, 0.0, 1.0));
+          out.cost = std::max(out.cost, out.risk * risk_weight_);
+          if (out.risk >= risk_hard_threshold_)
+          {
+            out.lethal = true;
+            out.cost = mppi_collision_cost_;
+          }
+        }
+      } catch (...) {
+        // Keep the 2D fallback result when the enhanced yaw layer is absent
+        // or the query is outside the map.
+      }
     }
     if (out.lethal) out.cost = mppi_collision_cost_;
     return out;
@@ -799,7 +836,7 @@ private:
     for (const auto &off : footprintOffsets()) {
       const double px = x + c * off.x() - s * off.y();
       const double py = y + s * off.x() + c * off.y();
-      const auto q = queryCostLocked(px, py);
+      const auto q = queryCostLocked(px, py, yaw);
       if (q.lethal) return false;
       cost = std::max(cost, q.cost);
       clr = std::min(clr, q.clearance);
@@ -1071,7 +1108,8 @@ private:
         const double progress = vx * ux + vy * uy;
         if (progress < (direct_corridor_blocked ? -0.55 * search_radius : -1.00)) continue;
 
-        const auto q = queryCostLocked(wx, wy);
+        const double step_yaw = std::atan2(wy - cwy, wx - cwx);
+        const auto q = queryCostLocked(wx, wy, std::isfinite(step_yaw) ? step_yaw : odom.yaw);
         if (q.lethal) continue;
 
         const double step = ((nx_step[k] == 0 || ny_step[k] == 0) ? 1.0 : std::sqrt(2.0)) * resolution_;
@@ -3149,7 +3187,7 @@ private:
     for (const auto &off : footprintOffsets()) {
       const double px = x + c * off.x() - s * off.y();
       const double py = y + s * off.x() + c * off.y();
-      const auto q = queryCostLocked(px, py);
+      const auto q = queryCostLocked(px, py, yaw);
       if (!q.known) continue;
       any_known = true;
       max_risk = std::max(max_risk, q.risk);
@@ -3496,6 +3534,9 @@ private:
 
   double risk_free_threshold_ = 0.08;
   double risk_hard_threshold_ = 0.58;
+  std::string risk_query_mode_ = "flat_2d";
+  std::string se2_risk_layer_ = "risk";
+  std::string hard_risk_layer_ = "baseline_risk";
   double unknown_cost_ = 60.0;
   bool allow_unknown_ = true;
   double risk_weight_ = 3.0;

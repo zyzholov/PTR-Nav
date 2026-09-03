@@ -50,6 +50,9 @@ terrain_nav_node:
 
     risk_free_threshold: 0.08
     risk_hard_threshold: 0.58
+    risk_query_mode: flat_2d
+    se2_risk_layer: risk
+    hard_risk_layer: baseline_risk
     unknown_cost: 60.0
     allow_unknown: true
     risk_weight: 3.6

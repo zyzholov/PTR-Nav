@@ -18,6 +18,7 @@ PTR-Nav 是一个面向复杂非结构化地形的 ROS 2 UGV 导航、建图、�
 
 - `src/FAST_LIO`: FAST-LIO ROS 2 版本及 Hunter/Gazebo/Isaac 配置。
 - `src/FAST-LIVO2-ROS2`: FAST-LIVO2 ROS 2 版本及 D455 相关配置，当前保留作后续多传感器融合验证。
+- `src/FSGP-BGK-ROS2`: FSGP-BGK 概率地形可通行性算法源码，当前作为待封装集成的第三方功能包。
 - `src/isaac_sim_hunter_livo2`: Isaac Sim 场景脚本、传感器配置、Mars Gale 地形渲染与诊断脚本。
 - `src/simulator`: Gazebo/Isaac 使用的 UGV、Livox、地图和仿真资源。
 - `src/planner`: 地形导航、轨迹规划、控制和相关 launch 文件。
@@ -123,6 +124,28 @@ Terminal 4，键盘控制：
 
 这个诊断脚本会对比 FAST-LIO `/Odometry` 和 Isaac `/isaac/ground_truth/odometry`，同时输出 LiDAR/IMU 频率、点云字段、点数、最新控制量和相对 XY/z/yaw 漂移。
 
+## FSGP-BGK / SEB 地形增强链路
+
+当前分支新增 `fsgp_bgk_se2` ROS 2 集成包。它订阅现有 `terrain_analyzer` 的 `SE2Grid`，使用 GPU 优先、CPU 托底的 BGK 风格地形平滑和 SEB 航向扫描，发布增强后的 yaw-aware 风险地图：
+
+```bash
+./run_hunter_fsgp_bgk_se2.sh
+```
+
+让 `terrain_nav` 消费增强地图：
+
+```bash
+./run_hunter_fsgp_bgk_nav.sh
+```
+
+对应链路：
+
+```text
+FAST-LIO2 -> terrain_analyzer -> /car_0_terrain_analyzer/fused_map
+          -> fsgp_bgk_se2 -> /car_0_fsgp_bgk/fused_map
+          -> terrain_nav(risk_query_mode=se2_yaw)
+```
+
 ## 重要说明
 
 - Isaac Sim 中 `/Odometry` 留给 FAST-LIO，Isaac 真值里程计使用 `/isaac/ground_truth/odometry`，避免 RViz 和控制反馈混用两个里程计源。
@@ -133,6 +156,7 @@ Terminal 4，键盘控制：
 
 更多细节见：
 
+- `docs/FSGP_BGK_INTEGRATION_PLAN.md`
 - `src/isaac_sim_hunter_livo2/docs/ISAAC_SIM_LIVO2.md`
 - `docs/FAST_LIVO2_D455_INTEGRATION.md`
 - `NEOS_REAL_DEPLOYMENT_GUIDE.md`
