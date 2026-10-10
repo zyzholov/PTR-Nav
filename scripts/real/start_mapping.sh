@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 source /opt/ros/humble/setup.bash
 unset PYTHONHOME
@@ -27,9 +27,8 @@ if [[ -z "${RMW_IMPLEMENTATION:-}" ]]; then
   export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 fi
 
-if [[ "${CLEAN_STALE_REAL_MAPPING:-1}" == "1" ]]; then
+if [[ "${CLEAN_STALE_REAL_MAPPING:-0}" == "1" ]]; then
   pkill -f 'fastlio_mapping' >/dev/null 2>&1 || true
-  pkill -f 'terrain_analyzer' >/dev/null 2>&1 || true
 fi
 
 LAUNCH_ARGS=("$@")
@@ -55,13 +54,14 @@ add_default_arg() {
 if [[ $SHOW_ARGS -eq 0 ]]; then
   add_default_arg use_sim_time false
   add_default_arg fastlio true
-  add_default_arg terrain true
+  add_default_arg terrain false
   add_default_arg rviz true
   add_default_arg grid_clouds false
   add_default_arg lid_topic /livox/lidar
   add_default_arg imu_topic /imu/data_raw
 fi
 
-echo "[run_real_mapping] Launching NEOS real mapping/localization stack"
-echo "[run_real_mapping] Extra launch args: ${LAUNCH_ARGS[*]}"
+echo "[real_mapping] Starting FAST-LIO mapping/localization only"
+echo "[real_mapping] Terrain analysis is a separate process: scripts/real/start_terrain_analysis.sh"
+echo "[real_mapping] Extra launch args: ${LAUNCH_ARGS[*]}"
 exec ros2 launch fast_lio neos_mid360_mapping.launch.py "${LAUNCH_ARGS[@]}"

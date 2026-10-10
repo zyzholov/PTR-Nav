@@ -14,6 +14,7 @@ def generate_launch_description():
     risk_query_mode = LaunchConfiguration("risk_query_mode")
     se2_risk_layer = LaunchConfiguration("se2_risk_layer")
     hard_risk_layer = LaunchConfiguration("hard_risk_layer")
+    se2_risk_lethal = LaunchConfiguration("se2_risk_lethal")
 
     return LaunchDescription([
         DeclareLaunchArgument("use_sim_time", default_value="true"),
@@ -23,6 +24,7 @@ def generate_launch_description():
         DeclareLaunchArgument("risk_query_mode", default_value="flat_2d"),
         DeclareLaunchArgument("se2_risk_layer", default_value="risk"),
         DeclareLaunchArgument("hard_risk_layer", default_value="baseline_risk"),
+        DeclareLaunchArgument("se2_risk_lethal", default_value="false"),
         DeclareLaunchArgument(
             "params",
             default_value=PathJoinSubstitution([
@@ -46,6 +48,7 @@ def generate_launch_description():
                     "risk_query_mode": risk_query_mode,
                     "se2_risk_layer": se2_risk_layer,
                     "hard_risk_layer": hard_risk_layer,
+                    "se2_risk_lethal": se2_risk_lethal,
                 },
             ],
         ),

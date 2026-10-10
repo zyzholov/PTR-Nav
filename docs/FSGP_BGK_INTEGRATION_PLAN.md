@@ -133,8 +133,8 @@ fsgp_bgk_se2_node
 当前分支已经落地第一版 `src/fsgp_bgk_se2`：
 
 - `fsgp_bgk_se2_node`：订阅 `SE2Grid`，发布增强后的 `/car_0_fsgp_bgk/fused_map`。
-- GPU 优先：检测到 CuPy/CUDA 时使用 GPU 数组计算。
-- CPU 托底：没有 CuPy/CUDA 时自动回退 NumPy。
+- 计算后端：`gpu_backend=auto` 在常用 `104x104x36` 网格上选择 CuPy，仅对很小网格选择 CPU；`gpu_backend=cupy` 可以强制测试 GPU。
+- CPU 托底：没有 CuPy/CUDA、CuPy 运行失败或 `use_gpu=false` 时自动回退 NumPy。
 - `terrain_nav` 已增加 `risk_query_mode=se2_yaw`，可以按 `(x,y,yaw)` 查询增强 `risk`。
 - 上游 FSGP-BGK 的演示仿真包和 PCD 资产已从主 workspace 移走，避免污染主 workspace。
 
@@ -324,12 +324,12 @@ SEB 建议评估项：
 
 工程里目前有两条 GPU 线索：
 
-1. `FSGP-BGK-ROS2` 使用 `torch/gpytorch/cupy`，但仍有 CPU 下采样、sklearn KNN、NumPy 拼接和 ROS message 拷贝。
-2. `terrain_analyzer` 目录里已有 `terrain_analyzer_gpu_node.cpp` 与 `TerrainBank.cu`，但当前 `CMakeLists.txt` 只编译 CPU 版 `terrain_analyzer`。
+1. `fsgp_bgk_se2` 已使用融合 CuPy RawKernel 执行 BGK 风格平滑和 SEB 航向扫描；ROS2 消息解析与发布仍位于 CPU。
+2. `terrain_analyzer_gpu_node.cpp + TerrainBank.cu` 已纳入构建，并保留 CPU `terrain_analyzer` 作为托底。
 
 所以“地形分析与高斯回归都跑 GPU”是可行的，但建议分两步做：
 
-### 7.2 近期方案：Python GPU 原型
+### 7.2 近期方案：Python 自适应原型
 
 用于快速验证算法效果：
 
@@ -337,13 +337,14 @@ SEB 建议评估项：
 - 将配置路径改为 ROS2 parameter，不再依赖相对目录。
 - 输入适配当前 topic。
 - 输出 `SE2Grid`，而不是只发布 `PointCloud2`。
-- 保持 `torch/gpytorch/cupy` GPU 推理。
+- 保持 CuPy 后端可用，默认 `gpu_backend=auto`：常用局部网格走 GPU，很小网格走 CPU，`gpu_backend=cupy` 可强制 GPU。
 
 需要优化的点：
 
 - 用 `torch` 或 `cupy` 替代 Open3D/sklearn 的关键循环。
 - 避免每帧重新完整训练 GP；可用滑动窗口增量样本、低频训练、高频预测。
 - 减少 CPU/GPU 之间的往返复制，只在 ROS 发布前 copy 最终 layer。
+- 当前 Python/CuPy 版本已将核心计算合并为 RawKernel；在线延迟仍包含 ROS2 消息序列化与 CPU/GPU 拷贝，后续可继续迁移到 C++/CUDA。
 
 ### 7.3 中期方案：C++/CUDA 工程化
 
@@ -429,7 +430,8 @@ fsgp_bgk_se2_node:
     publish_rate_hz: 5.0
 
     use_gpu: true
-    gpu_backend: torch_cupy
+    gpu_backend: auto
+    auto_gpu_min_work_items: 100000
     inducing_points: 500
     lengthscale: 0.10
     alpha: 10.0

@@ -1,15 +1,38 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ISAAC_ROOT="${ISAAC_SIM_ROOT:-/home/z/workspace_zyz/Isaac_Sim}"
 SCENE_SCRIPT="$ROOT_DIR/src/isaac_sim_hunter_livo2/scripts/hunter_livo2_isaac_scene.py"
 HEADLESS="false"
-EXTRA_ARGS=()
+EXTRA_ARGS=(
+  --sensor-profile mapping
+  --scene-profile mars_gale
+  --drive-mode cmd_vel
+  --cmd-vel-angular-mode steer
+  --obstacle-density sparse
+  --camera-width 960
+  --camera-height 540
+  --render-hz 10
+  --render-quality auto
+  --realtime
+)
 VISUAL_ONLY="false"
 
 for arg in "$@"; do
   case "$arg" in
+    -h|--help)
+      cat <<'EOF'
+Usage: scripts/sim/start_simulation.sh [headless:=true|false] [Isaac scene options]
+Default: GUI, Mars Gale, physical cmd_vel steering, LiDAR/IMU mapping profile.
+  --camera-enabled                 Add D455 RGB/depth topics.
+  --camera-width 1280 --camera-height 720 --render-quality quality
+  headless:=true --camera-enabled Uses a 640x360 camera and fast terrain skin.
+  --duration 120                    Stop after 120 simulation seconds.
+This script starts no mapping, terrain-analysis or planning nodes.
+EOF
+      exit 0
+      ;;
     headless:=*)
       HEADLESS="${arg#headless:=}"
       ;;
@@ -28,6 +51,7 @@ for arg in "$@"; do
       ;;
   esac
 done
+case "$HEADLESS" in true|false) ;; *) echo "headless must be true or false" >&2; exit 2 ;; esac
 
 if [[ ! -x "$ISAAC_ROOT/python.sh" ]]; then
   echo "[hunter_isaac] ERROR: Isaac Sim python.sh was not found at $ISAAC_ROOT" >&2

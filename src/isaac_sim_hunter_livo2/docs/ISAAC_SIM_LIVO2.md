@@ -52,7 +52,7 @@ It is intentionally separate from the Gazebo backend.
   - `/camera/camera/depth/color/points`
   - `/isaac/ground_truth/odometry` when `--drive-mode cmd_vel` is enabled
 
-For the current FAST-LIO-only Isaac test chain, use `run_hunter_fastlio.sh`.
+For the current FAST-LIO-only Isaac test chain, use `scripts/sim/start_mapping.sh`.
 It auto-detects whether `/livox/lidar` is Isaac `sensor_msgs/msg/PointCloud2`
 or Gazebo/Livox `CustomMsg`. Isaac PointCloud2 selects
 `src/FAST_LIO/config/isaac_hunter_mid360_pointcloud.yaml`; Gazebo CustomMsg
@@ -70,55 +70,55 @@ kept simple.
 Terminal 1:
 
 ```bash
-./run_hunter_isaac_sim.sh headless:=true --scene-profile mars_gale --mars-visual-detail fast --sensor-visual-detail procedural --drive-mode circle --realtime
+scripts/sim/start_simulation.sh headless:=true --scene-profile mars_gale --mars-visual-detail fast --sensor-visual-detail procedural --drive-mode circle --realtime
 ```
 
 Terminal 2:
 
 ```bash
-./run_hunter_fastlio.sh
+scripts/sim/start_mapping.sh
 ```
 
 Current FAST-LIO-only mapping path:
 
 ```bash
-./run_hunter_isaac_sim.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode cmd_vel --obstacle-density sparse --render-hz 10 --realtime
-./run_hunter_fastlio.sh
+scripts/sim/start_simulation.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode cmd_vel --obstacle-density sparse --render-hz 10 --realtime
+scripts/sim/start_mapping.sh
 ```
 
 Mapping while watching the rendered Isaac scene:
 
 ```bash
-./run_hunter_isaac_sim.sh mapping:=true --scene-profile mars_gale --drive-mode cmd_vel --cmd-vel-angular-mode steer --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --viewer-camera close --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
-./run_hunter_fastlio.sh
-./run_hunter_isaac_keyboard.sh
-./check_hunter_slam_drift.sh 20
+scripts/sim/start_simulation.sh mapping:=true --scene-profile mars_gale --drive-mode cmd_vel --cmd-vel-angular-mode steer --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --viewer-camera close --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
+scripts/sim/start_mapping.sh
+scripts/sim/start_keyboard_control.sh
+scripts/sim/checks/slam_drift.sh 20
 ```
 
 Higher-fidelity LiDAR diagnostics:
 
 ```bash
 # Low-load debug mode. This keeps 10 Hz but is visibly sparse in RViz.
-./run_hunter_isaac_sim.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality realtime --obstacle-density sparse --render-hz 10 --realtime
+scripts/sim/start_simulation.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality realtime --obstacle-density sparse --render-hz 10 --realtime
 
 # 20k-ray CSV solidState MID-360 approximation generated from the Gazebo
 # livox_laser_simulation_ros2 mid360.csv table. It matches the scan table more
 # closely than the rotary surrogate, but was slower than 10 Hz on the test GPU.
-./run_hunter_isaac_sim.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality mid360_csv --realtime
+scripts/sim/start_simulation.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality mid360_csv --realtime
 
 # Complete Isaac RTX scan buffers. Denser per frame, but much slower on this GPU.
-./run_hunter_isaac_sim.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality dense --lidar-full-scan --realtime
+scripts/sim/start_simulation.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality dense --lidar-full-scan --realtime
 
 # Local MID-360 FOV/rate surrogate. It matches 360 x [-7, 52] deg and ~20k
 # points/frame, but still uses Isaac RTX rotary scanning rather than Livox's
 # true non-repetitive scan pattern.
-./run_hunter_isaac_sim.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality mid360 --lidar-full-scan --realtime
+scripts/sim/start_simulation.sh headless:=true mapping:=true --scene-profile mars_gale --drive-mode stationary --lidar-quality mid360 --lidar-full-scan --realtime
 ```
 
 Optional downstream terrain stack:
 
 ```bash
-./run_hunter_livo2_terrain_nav.sh
+scripts/old/sim/run_hunter_livo2_terrain_nav.sh
 ```
 
 Useful Isaac arguments:
@@ -127,58 +127,58 @@ Useful Isaac arguments:
 # Full default scene: Hunter SE URDF/STL, 150 m rich project map, DAE
 # landmarks, tree groups, Livox visual mesh, IMU body, D455 body, and a parked
 # vehicle.
-./run_hunter_isaac_sim.sh headless:=true --duration 600 --realtime
+scripts/sim/start_simulation.sh headless:=true --duration 600 --realtime
 
 # High-detail Rubicon terrain profile. This uses the 190 MB Rubicon DAE and can
 # take longer on first conversion.
-./run_hunter_isaac_sim.sh headless:=true --scene-profile rubicon --duration 600 --realtime
+scripts/sim/start_simulation.sh headless:=true --scene-profile rubicon --duration 600 --realtime
 
 # Local Mars Gale off-road crater profile. This is the preferred large
 # off-road test scene when you want to use the existing project map assets.
-./run_hunter_isaac_sim.sh headless:=true --scene-profile mars_gale --duration 600 --realtime
+scripts/sim/start_simulation.sh headless:=true --scene-profile mars_gale --duration 600 --realtime
 
 # Community Offroad-Nav forest/rock USD profile. This uses Offroad-Nav as a
 # visual/geometric asset source only; the ROS2 sensor and FAST-LIVO2 chain stays
 # in this package.
-./run_hunter_isaac_sim.sh headless:=true --scene-profile offroad_nav --duration 600 --realtime
+scripts/sim/start_simulation.sh headless:=true --scene-profile offroad_nav --duration 600 --realtime
 
 # Interactive Isaac UI inspection. GUI mode should use the textured Mars skin
 # and CAD sensor visuals while checking the vehicle and camera view.
-./run_hunter_isaac_sim.sh --scene-profile mars_gale --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
+scripts/sim/start_simulation.sh --scene-profile mars_gale --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
 
 # Fast visual check: no RTX LiDAR, D455, ROS clock, or IMU graph, but keep
 # high-quality terrain and sensor visuals.
-./run_hunter_isaac_sim.sh --scene-profile mars_gale --visual-only --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --viewer-camera close --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
+scripts/sim/start_simulation.sh --scene-profile mars_gale --visual-only --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --viewer-camera close --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
 
 # Interactive scene with sensor topics enabled. Do not add --visual-only when
 # checking /clock, /livox/lidar, /imu/data_raw, /livox/imu, or D455 topics.
-./run_hunter_isaac_sim.sh --scene-profile mars_gale --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --viewer-camera close --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
+scripts/sim/start_simulation.sh --scene-profile mars_gale --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --viewer-camera close --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
 
 # In another terminal, verify that the ROS 2 bridge topics are visible.
-./check_hunter_isaac_topics.sh 45
+scripts/sim/checks/topics.sh 45
 
 # Same scene from an overview/top-down camera.
-./run_hunter_isaac_sim.sh --scene-profile mars_gale --viewer-camera overview --obstacle-density sparse --camera-width 960 --camera-height 540 --render-hz 10 --realtime
-./run_hunter_isaac_sim.sh --scene-profile mars_gale --viewer-camera top --obstacle-density sparse --camera-width 960 --camera-height 540 --render-hz 10 --realtime
+scripts/sim/start_simulation.sh --scene-profile mars_gale --viewer-camera overview --obstacle-density sparse --camera-width 960 --camera-height 540 --render-hz 10 --realtime
+scripts/sim/start_simulation.sh --scene-profile mars_gale --viewer-camera top --obstacle-density sparse --camera-width 960 --camera-height 540 --render-hz 10 --realtime
 
 # Higher-quality screenshots/recording after the scene is confirmed.
-./run_hunter_isaac_sim.sh --scene-profile offroad_nav --renderer PathTracing --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 5 --realtime
-./run_hunter_isaac_sim.sh --scene-profile mars_gale --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --renderer PathTracing --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 5 --realtime
+scripts/sim/start_simulation.sh --scene-profile offroad_nav --renderer PathTracing --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 5 --realtime
+scripts/sim/start_simulation.sh --scene-profile mars_gale --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --renderer PathTracing --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 5 --realtime
 
 # Repeatable FAST-LIVO2 mapping demo path. Start FAST-LIVO2 during the initial
 # stationary window, before the circle motion begins.
-./run_hunter_isaac_sim.sh headless:=true --scene-profile mars_gale --mars-visual-detail fast --sensor-visual-detail procedural --drive-mode circle --duration 600 --realtime
+scripts/sim/start_simulation.sh headless:=true --scene-profile mars_gale --mars-visual-detail fast --sensor-visual-detail procedural --drive-mode circle --duration 600 --realtime
 
 # ROS2 teleop/control mode. Publish geometry_msgs/Twist to /cmd_vel; linear.x
 # drives forward/backward and angular.z is the Hunter/Gazebo steering angle by
 # default. Isaac drives the physical wheel/steering articulation and applies
 # speed/steering limits.
-./run_hunter_isaac_sim.sh --scene-profile mars_gale --drive-mode cmd_vel --cmd-vel-angular-mode steer --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
-./run_hunter_isaac_keyboard.sh
+scripts/sim/start_simulation.sh --scene-profile mars_gale --drive-mode cmd_vel --cmd-vel-angular-mode steer --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
+scripts/sim/start_keyboard_control.sh
 
 # Lighter debug scene. This still uses the real Hunter SE model, but skips the
 # rich terrain/landmark assets and decorative sensor meshes.
-./run_hunter_isaac_sim.sh headless:=true --scene-profile light --map-asset none --no-landmarks --no-sensor-meshes --obstacle-density none --realtime
+scripts/sim/start_simulation.sh headless:=true --scene-profile light --map-asset none --no-landmarks --no-sensor-meshes --obstacle-density none --realtime
 ```
 
 ## Notes
@@ -193,7 +193,7 @@ Useful Isaac arguments:
   print the effective `RMW_IMPLEMENTATION`, `ROS_DOMAIN_ID`, and
   `ROS_LOCALHOST_ONLY` at startup. If you override it with
   `HUNTER_ISAAC_RMW_IMPLEMENTATION`, use the same value for Isaac, FAST-LIVO2,
-  `ros2 topic pub`, and `check_hunter_isaac_topics.sh`.
+  `ros2 topic pub`, and `scripts/sim/checks/topics.sh`.
 - By default, `--drive-mode stationary` keeps Hunter parked so the vehicle does
   not unexpectedly slide around the scene.
 - `--drive-mode circle` enables the repeatable SLAM test trajectory. Its first
@@ -208,16 +208,16 @@ Useful Isaac arguments:
   keyboard/control commands because it has command timeout protection and logs
   when multiple publishers are driving `/cmd_vel`.
 - The default `--motion-model physics` drives the imported Hunter articulation
-  through wheel velocity targets and steering joints, with a bounded root velocity assist
-  to suppress unreal lateral slip, straight-line yaw drift, and parked creeping
-  on rough terrain. The default assist mode is `strict`, so manual driving and
-  mapping runs track the commanded speed/steering angle closely while the model
-  still uses articulation joints and scene collisions. Use
-  `--physics-root-assist-mode contact` only when deliberately tuning raw
-  wheel/terrain contact; on the imported Hunter URDF it is noticeably slower
-  and turns more weakly.
+  through wheel velocity targets and steering joints. Bounded body-speed and
+  yaw-rate feedback improve tracking while terrain contact, vehicle mass, and
+  obstacle collision remain in the PhysX loop. Root velocity assistance is off
+  by default because hard root-velocity writes can generate nonphysical IMU
+  acceleration when the chassis is blocked or crossing a steep break-over.
+  `--physics-root-assist --physics-root-assist-mode contact` remains available
+  for contact-controller experiments; do not use `strict` root assistance for
+  FAST-LIO evaluation.
   `--motion-model kinematic` is kept only as a sensor-pipeline debug fallback.
-- `./run_hunter_isaac_keyboard.sh` waits for the Isaac `/cmd_vel` subscriber by
+- `scripts/sim/start_keyboard_control.sh` waits for the Isaac `/cmd_vel` subscriber by
   default and publishes pure target speed/steering commands. It reads Isaac
   measured speed from `/isaac/ground_truth/odometry`, leaving FAST-LIO's
   `/Odometry` output separate. Its Isaac defaults are `max_linear=1.00 m/s`,
@@ -261,15 +261,15 @@ Useful Isaac arguments:
   near-body self-filter box in the generic PointCloud2 preprocessing path. This
   removes close Isaac self-reflections from the Hunter body/sensor mount before
   FAST-LIO sees the scan.
-- `./check_hunter_isaac_rates.sh` prints LiDAR/IMU rates, PointCloud2 fields,
+- `scripts/sim/checks/rates.sh` prints LiDAR/IMU rates, PointCloud2 fields,
   and min/mean/max points per LiDAR frame. If mean points fall below
   `LIDAR_WARN_MIN_POINTS` (default 10000), the script warns that mapping will
   look sparse.
-- `./check_hunter_slam_drift.sh 20` compares FAST-LIO `/Odometry` against
+- `scripts/sim/checks/slam_drift.sh 20` compares FAST-LIO `/Odometry` against
   Isaac `/isaac/ground_truth/odometry`, and prints LiDAR/IMU rates, point cloud
   fields, point counts, latest command, and relative XY/z/yaw drift. Run it
   while Isaac and FAST-LIO are both active when a map starts to smear.
-- `./run_hunter_fastlio.sh` samples the first Isaac PointCloud2 frame and warns
+- `scripts/sim/start_mapping.sh` samples the first Isaac PointCloud2 frame and warns
   when it is below `HUNTER_FASTLIO_WARN_MIN_POINTS` (default 10000). It also
   warns if `/Odometry` already has a publisher before FAST-LIO starts, because
   mixed odometry publishers make RViz/control diagnostics misleading.
@@ -335,9 +335,9 @@ Useful Isaac arguments:
   posts and walls from passing through the vehicle body.
 - The scene explicitly re-authors the Hunter URDF link masses in Isaac and
   enables collision/contact offsets on static terrain, rocks, posts, and walls.
-  If you are deliberately testing raw wheel-contact behavior, use
-  `--physics-root-assist-mode contact`; use the default `strict` mode for repeatable sensor
-  data when obstacle collision is not the thing being evaluated.
+  The default controller keeps root assistance disabled and limits wheel-speed
+  feedback to 2.2 times the requested speed and 3 times the requested yaw rate,
+  preventing a blocked wheel from winding the controller up indefinitely.
 - The artificial start pad, compacted route surface, and yellow route center
   guide are hidden by default. Add `--show-start-pad`, `--show-route-surface`, or
   `--show-route-guide` only when debugging those overlays.

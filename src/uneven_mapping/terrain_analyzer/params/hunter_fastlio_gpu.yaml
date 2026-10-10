@@ -1,0 +1,42 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+
+    # Registered FAST-LIO cloud and matching odometry are already in map frame.
+    cache_size: 200
+    verbose: true
+    publish_fused_map: true
+
+    sensor.ignore_z_min: -2.0
+    sensor.ignore_z_max: 0.65
+    sensor.sensor2body_t: [0.0, 0.0, 0.0]
+    sensor.beam_sigma: 0.008
+
+    # Keep the grid below TerrainBank's 100000-cell workspace limit. 20.8 / 0.2
+    # gives 104 x 104 cells and 36 directional risk slices.
+    elevation.length_pos_x: 20.8
+    elevation.length_pos_y: 20.8
+    elevation.resolution_pos: 0.2
+    # SE2Grid spans 2*pi + 0.02 rad, so this value yields exactly 36 slices.
+    elevation.resolution_yaw: 0.17509
+    elevation.min_var: 0.0001
+    elevation.max_var: 0.05
+    elevation.min_var_hori: 0.0001
+    elevation.mahalanobis_threshold: 2.5
+    elevation.ellipsoid_x: 0.84
+    elevation.ellipsoid_y: 0.626
+    elevation.ellipsoid_offset: [0.08, 0.0]
+    elevation.iter_num: 1
+    elevation.dynamic_clear_enabled: true
+    elevation.dynamic_clear_frames: 3
+    elevation.dynamic_ray_stride: 8
+    elevation.dynamic_ray_range: 20.0
+
+    gpu.normal_radius: 0.30
+    gpu.max_phx: 0.786
+    gpu.max_phy: 1.571
+    gpu.max_curvature: 1000.0
+    gpu.weight_phi: 0.2
+    gpu.weight_curvature: 0.6
+
+    sdf.threshold: 0.5

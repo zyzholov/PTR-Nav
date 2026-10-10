@@ -731,6 +731,7 @@ void Preprocess::default_handler(const sensor_msgs::msg::PointCloud2::UniquePtr 
 
   pl_surf.reserve(static_cast<size_t>(total_points));
   const double scan_time_ms = (SCAN_RATE > 0) ? (1000.0 / static_cast<double>(SCAN_RATE)) : 100.0;
+  const uint64_t point_stride = static_cast<uint64_t>(std::max(1, point_filter_num));
 
   for (uint32_t row = 0; row < height; ++row)
   {
@@ -738,6 +739,10 @@ void Preprocess::default_handler(const sensor_msgs::msg::PointCloud2::UniquePtr 
     for (uint32_t col = 0; col < width; ++col)
     {
       const uint64_t flat_index = static_cast<uint64_t>(row) * width + col;
+      if (flat_index % point_stride != 0)
+      {
+        continue;
+      }
       const size_t point_offset = row_offset + static_cast<size_t>(col) * msg->point_step;
       if (point_offset + msg->point_step > msg->data.size())
       {

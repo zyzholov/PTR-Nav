@@ -8,6 +8,7 @@ from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -20,6 +21,8 @@ def generate_launch_description():
     config_file = LaunchConfiguration("config_file")
     rviz_use = LaunchConfiguration("rviz")
     rviz_cfg = LaunchConfiguration("rviz_cfg")
+    dynamic_clear_enabled = LaunchConfiguration("dynamic_clear_enabled")
+    dynamic_expand_enabled = LaunchConfiguration("dynamic_expand_enabled")
 
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         "use_sim_time",
@@ -46,12 +49,24 @@ def generate_launch_description():
         default_value=default_rviz_config_path,
         description="RViz config path."
     )
+    declare_dynamic_expand_cmd = DeclareLaunchArgument(
+        "dynamic_expand_enabled",
+        default_value="false",
+        description="Enable experimental accumulated-map dynamic-cluster expansion."
+    )
+    declare_dynamic_clear_cmd = DeclareLaunchArgument(
+        "dynamic_clear_enabled",
+        default_value="true",
+        description="Enable conservative free-ray clearing of dynamic points."
+    )
 
     fast_lio_node = Node(
         package="fast_lio",
         executable="fastlio_mapping",
         parameters=[PathJoinSubstitution([config_path, config_file]),
-                    {"use_sim_time": use_sim_time}],
+                    {"use_sim_time": use_sim_time,
+                     "mapping.dynamic_clear_enabled": ParameterValue(dynamic_clear_enabled, value_type=bool),
+                     "mapping.dynamic_expand_enabled": ParameterValue(dynamic_expand_enabled, value_type=bool)}],
         output="screen"
     )
 
@@ -69,6 +84,8 @@ def generate_launch_description():
     ld.add_action(declare_config_file_cmd)
     ld.add_action(declare_rviz_cmd)
     ld.add_action(declare_rviz_config_path_cmd)
+    ld.add_action(declare_dynamic_clear_cmd)
+    ld.add_action(declare_dynamic_expand_cmd)
 
     ld.add_action(fast_lio_node)
     ld.add_action(rviz_node)

@@ -25,8 +25,8 @@ Adapted outputs:
 Simulation launch:
 
 ```bash
-./run_hunter_gazebo.sh enable_d455:=true
-./run_hunter_fastlivo2.sh
+scripts/old/sim/run_hunter_gazebo.sh enable_d455:=true
+scripts/sim/optional/start_fastlivo2.sh
 ros2 launch plan_manage hunter_gazebo_fastlio_nav.launch.py
 ```
 

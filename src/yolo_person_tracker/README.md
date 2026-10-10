@@ -16,31 +16,31 @@ Run with the requested conda environment:
 
 ```bash
 cd /home/z/workspace_zyz/seb_clean
-./run_yolo_person_tracker.sh
+scripts/old/tools/run_yolo_person_tracker.sh
 ```
 
 Useful debug run without opening a window:
 
 ```bash
-./run_yolo_person_tracker.sh show_window:=false loop_video:=false max_frames:=100
+scripts/old/tools/run_yolo_person_tracker.sh show_window:=false loop_video:=false max_frames:=100
 ```
 
 Realtime defaults use GPU `device:=0`, `half:=true`, asynchronous inference, and full-resolution frames. If the target board is overloaded, lower only the display/inference frame size while keeping the original video timing:
 
 ```bash
-./run_yolo_person_tracker.sh frame_scale:=0.667
+scripts/old/tools/run_yolo_person_tracker.sh frame_scale:=0.667
 ```
 
 The history overlay uses lightweight contour ghosts. Useful tuning:
 
 ```bash
-./run_yolo_person_tracker.sh ghost_alpha:=0.24 ghost_max_count:=10
+scripts/old/tools/run_yolo_person_tracker.sh ghost_alpha:=0.24 ghost_max_count:=10
 ```
 
 If you need to override the weight file:
 
 ```bash
-./run_yolo_person_tracker.sh model_path:=/path/to/best.pt
+scripts/old/tools/run_yolo_person_tracker.sh model_path:=/path/to/best.pt
 ```
 
 ## Published Topics

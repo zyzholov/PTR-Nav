@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC_DIR="$ROOT_DIR/src"
 
 unset PYTHONHOME
@@ -75,6 +75,21 @@ if [[ "$SHOW_HELP" != "true" && "${HUNTER_ISAAC_KEYBOARD_WAIT_FOR_CMD_VEL:-1}" !
   else
     echo "[hunter_isaac_keyboard] WARNING: no /cmd_vel subscriber detected yet; starting teleop anyway." >&2
     echo "[hunter_isaac_keyboard]          Check that Isaac was launched with --drive-mode cmd_vel and FastDDS." >&2
+  fi
+fi
+
+if [[ "$SHOW_HELP" != "true" ]]; then
+  CMD_TOPIC_INFO="$(timeout 3s ros2 topic info --no-daemon --verbose /cmd_vel 2>/dev/null || true)"
+  CMD_PUBLISHER_COUNT="$(awk '/^Publisher count:/ {print $3; exit}' <<< "$CMD_TOPIC_INFO")"
+  CMD_PUBLISHER_COUNT="${CMD_PUBLISHER_COUNT:-0}"
+  if (( CMD_PUBLISHER_COUNT > 0 )); then
+    echo "[hunter_isaac_keyboard] ERROR: detected ${CMD_PUBLISHER_COUNT} existing /cmd_vel publisher(s)." >&2
+    echo "[hunter_isaac_keyboard] Stop autonomous control or launch the enhanced stack with nav:=false." >&2
+    echo "[hunter_isaac_keyboard] Set HUNTER_ISAAC_KEYBOARD_ALLOW_MULTIPLE_PUBLISHERS=1 only for deliberate controller tests." >&2
+    if [[ "${HUNTER_ISAAC_KEYBOARD_ALLOW_MULTIPLE_PUBLISHERS:-0}" != "1" ]]; then
+      exit 2
+    fi
+    echo "[hunter_isaac_keyboard] WARNING: multiple command publishers explicitly allowed." >&2
   fi
 fi
 

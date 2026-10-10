@@ -16,17 +16,23 @@ from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Float32MultiArray, Header
 
 from .bgk_seb import BgkSebEstimator, BgkSebParams, BgkSebResult
+from .obstacle_columns import preserve_collision_risk, vertical_columns
 from .se2_grid_tools import (
     first_data_template,
     get_layer_2d,
     get_layer_slices,
+    grid_buffer_to_world,
     layer_refs,
     matrix_shape,
     matrix_to_multiarray_like,
     multiarray_to_matrix,
     repeat_or_trim_slices,
     yaw_slices,
+    world_to_grid_buffer,
 )
+
+
+SE2_GRID_LENGTH_YAW = 2.0 * math.pi + 0.02
 
 
 def _as_bool(value) -> bool:
@@ -47,6 +53,9 @@ class FsgpBgkSe2Node(Node):
         self.latest_odom: Optional[Odometry] = None
         self.latest_cloud: Optional[PointCloud2] = None
         self.last_backend_warn = ""
+        self._last_process_wall = 0.0
+        self._last_skip_log_wall = 0.0
+        self._skipped_maps = 0
 
         self.map_sub = self.create_subscription(
             SE2Grid,
@@ -65,7 +74,7 @@ class FsgpBgkSe2Node(Node):
                 PointCloud2,
                 self.input_cloud_topic,
                 self._cloud_callback,
-                qos_profile_sensor_data,
+                QoSProfile(depth=1, reliability=qos_profile_sensor_data.reliability),
             )
         else:
             self.cloud_sub = None
@@ -89,7 +98,9 @@ class FsgpBgkSe2Node(Node):
         self.get_logger().info(
             f"fsgp_bgk_se2 ready: input={self.input_fused_map_topic} "
             f"output={self.output_fused_map_topic} backend={self.estimator.backend_name} "
-            f"gpu={self.params.prefer_gpu}"
+            f"gpu_requested={self.params.prefer_gpu} max_update={self.max_update_rate_hz:.2f}Hz "
+            f"diagnostic_layers={self.include_diagnostic_layers} "
+            f"reason={self.estimator.backend_reason}"
         )
 
     def _declare_parameters(self) -> None:
@@ -104,6 +115,7 @@ class FsgpBgkSe2Node(Node):
 
         self.declare_parameter("use_gpu", True)
         self.declare_parameter("gpu_backend", "auto")
+        self.declare_parameter("auto_gpu_min_work_items", 100_000)
         self.declare_parameter("yaw_bins", 0)
         self.declare_parameter("bgk_sigma_m", 0.45)
         self.declare_parameter("bgk_radius_m", 1.20)
@@ -124,14 +136,16 @@ class FsgpBgkSe2Node(Node):
         self.declare_parameter("footprint_margin", 0.10)
         self.declare_parameter("footprint_samples_x", 5)
         self.declare_parameter("footprint_samples_y", 5)
-        self.declare_parameter("risk_fusion_mode", "max")
-        self.declare_parameter("baseline_weight", 0.40)
+        self.declare_parameter("risk_fusion_mode", "weighted")
+        self.declare_parameter("baseline_weight", 0.45)
         self.declare_parameter("seb_weight", 0.45)
-        self.declare_parameter("uncertainty_weight", 0.15)
-        self.declare_parameter("unknown_risk", 0.85)
+        self.declare_parameter("uncertainty_weight", 0.10)
+        self.declare_parameter("unknown_risk", 0.65)
+        self.declare_parameter("include_diagnostic_layers", False)
         self.declare_parameter("publish_debug_clouds", True)
         self.declare_parameter("debug_yaw_index", 0)
         self.declare_parameter("debug_cloud_stride", 2)
+        self.declare_parameter("max_update_rate_hz", 8.0)
         self.declare_parameter("log_period_sec", 2.0)
 
     def _load_parameters(self) -> None:
@@ -143,9 +157,16 @@ class FsgpBgkSe2Node(Node):
         self.seb_cloud_topic = self.get_parameter("seb_cloud_topic").value
         self.frame_id = self.get_parameter("frame_id").value
         self.subscribe_cloud = _as_bool(self.get_parameter("subscribe_cloud").value)
+        self.include_diagnostic_layers = _as_bool(
+            self.get_parameter("include_diagnostic_layers").value
+        )
         self.publish_debug_clouds = _as_bool(self.get_parameter("publish_debug_clouds").value)
         self.debug_yaw_index = int(self.get_parameter("debug_yaw_index").value)
         self.debug_cloud_stride = max(1, int(self.get_parameter("debug_cloud_stride").value))
+        self.max_update_rate_hz = max(0.0, float(self.get_parameter("max_update_rate_hz").value))
+        self.min_update_period_sec = (
+            1.0 / self.max_update_rate_hz if self.max_update_rate_hz > 0.0 else 0.0
+        )
         self.log_period_sec = max(0.2, float(self.get_parameter("log_period_sec").value))
 
         self.configured_yaw_bins = int(self.get_parameter("yaw_bins").value)
@@ -154,6 +175,7 @@ class FsgpBgkSe2Node(Node):
             yaw_bins=max(1, self.configured_yaw_bins or 72),
             prefer_gpu=_as_bool(self.get_parameter("use_gpu").value),
             gpu_backend=str(self.get_parameter("gpu_backend").value),
+            auto_gpu_min_work_items=int(self.get_parameter("auto_gpu_min_work_items").value),
             bgk_sigma_m=float(self.get_parameter("bgk_sigma_m").value),
             bgk_radius_m=float(self.get_parameter("bgk_radius_m").value),
             variance_free=float(self.get_parameter("variance_free").value),
@@ -178,6 +200,7 @@ class FsgpBgkSe2Node(Node):
             seb_weight=float(self.get_parameter("seb_weight").value),
             uncertainty_weight=float(self.get_parameter("uncertainty_weight").value),
             unknown_risk=float(self.get_parameter("unknown_risk").value),
+            store_diagnostic_slices=self.include_diagnostic_layers or self.publish_debug_clouds,
         )
 
     def _odom_callback(self, msg: Odometry) -> None:
@@ -187,10 +210,31 @@ class FsgpBgkSe2Node(Node):
         self.latest_cloud = msg
 
     def _map_callback(self, msg: SE2Grid) -> None:
+        now = time.monotonic()
+        if (
+            self.min_update_period_sec > 0.0
+            and self._last_process_wall > 0.0
+            and now - self._last_process_wall < self.min_update_period_sec
+        ):
+            self._skipped_maps += 1
+            if now - self._last_skip_log_wall >= self.log_period_sec:
+                self.get_logger().info(
+                    f"FSGP-BGK/SEB throttled {self._skipped_maps} input maps; "
+                    f"max_update={self.max_update_rate_hz:.2f}Hz",
+                )
+                self._skipped_maps = 0
+                self._last_skip_log_wall = now
+            return
+
+        self._last_process_wall = now
         try:
             start = time.perf_counter()
             result, out_msg = self._process_map(msg)
             self.map_pub.publish(out_msg)
+            backend_state = f"{result.backend}: {result.backend_reason}"
+            if backend_state != self.last_backend_warn:
+                self.get_logger().info(f"FSGP-BGK compute backend: {backend_state}")
+                self.last_backend_warn = backend_state
             if self.publish_debug_clouds:
                 self._publish_debug_clouds(msg, result)
             elapsed_ms = (time.perf_counter() - start) * 1000.0
@@ -213,8 +257,14 @@ class FsgpBgkSe2Node(Node):
         shape = matrix_shape(template)
         elevation, elevation_template = get_layer_2d(msg, "elevation", 0.0, shape)
         variance, _ = get_layer_2d(msg, "var", 0.0, elevation.shape)
-        valid, _ = get_layer_2d(msg, "valid", 1.0, elevation.shape)
-        valid = np.nan_to_num(valid, nan=0.0) >= 0.5
+        refs = layer_refs(msg)
+        if "valid" in refs:
+            valid, _ = get_layer_2d(msg, "valid", 0.0, elevation.shape)
+            valid = np.nan_to_num(valid, nan=0.0) >= 0.5
+        else:
+            # The native CUDA terrain analyzer encodes unobserved cells as NaN
+            # in elevation and intentionally omits a separate validity layer.
+            valid = np.isfinite(elevation)
 
         risk_slices, _, risk_template = get_layer_slices(msg, "risk")
         if not risk_slices:
@@ -222,6 +272,10 @@ class FsgpBgkSe2Node(Node):
         yaws = self.configured_yaw_bins or yaw_slices(msg)
         yaws = max(1, int(yaws))
 
+        elevation = grid_buffer_to_world(elevation, msg)
+        variance = grid_buffer_to_world(variance, msg)
+        valid = grid_buffer_to_world(valid, msg)
+        risk_slices = [grid_buffer_to_world(layer, msg) for layer in risk_slices]
         self.params.resolution = max(float(msg.info.pos_resolution), 1.0e-3)
         self.params.yaw_bins = yaws
         baseline_risk_slices = repeat_or_trim_slices(
@@ -231,20 +285,54 @@ class FsgpBgkSe2Node(Node):
         )
 
         result = self.estimator.compute(elevation, variance, valid, baseline_risk_slices)
+        collision = np.zeros_like(valid, dtype=bool)
+        cloud = self.latest_cloud
+        if cloud is not None and cloud.header.frame_id == msg.info.header.frame_id:
+            map_time = msg.info.header.stamp.sec + msg.info.header.stamp.nanosec * 1e-9
+            cloud_time = cloud.header.stamp.sec + cloud.header.stamp.nanosec * 1e-9
+            if abs(map_time - cloud_time) <= 0.35:
+                fields = {f.name: f for f in cloud.fields}
+                if all(name in fields and fields[name].datatype == PointField.FLOAT32
+                       for name in ("x", "y", "z")):
+                    dtype = np.dtype({"names": ["x", "y", "z"],
+                                      "formats": [">f4" if cloud.is_bigendian else "<f4"] * 3,
+                                      "offsets": [fields[n].offset for n in ("x", "y", "z")],
+                                      "itemsize": cloud.point_step})
+                    data = np.ndarray((cloud.height, cloud.width), dtype=dtype,
+                                      buffer=cloud.data, strides=(cloud.row_step, cloud.point_step))
+                    points = np.column_stack([data[n].ravel() for n in ("x", "y", "z")])
+                    xp = np
+                    if result.backend == "cupy":
+                        import cupy as xp
+                    mask, _ = vertical_columns(
+                        points, valid.shape,
+                        (msg.info.pose.position.x - msg.info.length_x / 2,
+                         msg.info.pose.position.y - msg.info.length_y / 2),
+                        self.params.resolution, xp=xp)
+                    collision = xp.asnumpy(mask) if xp is not np else mask
+                    preserve_collision_risk(result, collision)
         out_msg = self._build_output_message(
             msg,
             result,
+            # Occupied cells are observed even when the ground estimator has
+            # insufficient support; otherwise RViz filters out the red column.
+            (valid | collision).astype(np.float32, copy=False),
             elevation_template or risk_template or template,
         )
+        self._append_layer(out_msg, "collision_risk",
+                           (False, [world_to_grid_buffer(collision.astype(np.float32), msg)]),
+                           elevation_template or risk_template or template)
         return result, out_msg
 
     def _build_output_message(
         self,
         msg: SE2Grid,
         result: BgkSebResult,
+        valid: np.ndarray,
         template: Float32MultiArray,
     ) -> SE2Grid:
         overrides: Dict[str, Tuple[bool, List[np.ndarray]]] = {
+            "valid": (False, [valid]),
             "risk": (True, result.final_risk_slices),
             "baseline_risk": (False, [result.baseline_risk]),
             "bgk_mean": (False, [result.bgk_mean]),
@@ -256,6 +344,10 @@ class FsgpBgkSe2Node(Node):
             "seb_step_risk": (True, result.seb_step_risk_slices),
             "seb_support": (True, result.seb_support_slices),
         }
+        overrides = {
+            name: (so2, [world_to_grid_buffer(matrix, msg) for matrix in matrices])
+            for name, (so2, matrices) in overrides.items()
+        }
 
         refs = layer_refs(msg)
         out = SE2Grid()
@@ -263,8 +355,9 @@ class FsgpBgkSe2Node(Node):
         out.info.header.stamp = msg.info.header.stamp
         if self.frame_id:
             out.info.header.frame_id = self.frame_id
-        out.info.yaw_resolution = 2.0 * math.pi / max(1, len(result.final_risk_slices))
-        out.info.length_yaw = 2.0 * math.pi
+        yaw_count = max(1, len(result.final_risk_slices))
+        out.info.yaw_resolution = SE2_GRID_LENGTH_YAW / max(1.0e-6, float(yaw_count) - 1.0e-6)
+        out.info.length_yaw = SE2_GRID_LENGTH_YAW
         out.start_index_row = msg.start_index_row
         out.start_index_col = msg.start_index_col
 
@@ -276,6 +369,8 @@ class FsgpBgkSe2Node(Node):
                 continue
 
             ref = refs[layer_name]
+            if not self.include_diagnostic_layers and ref.has_so2:
+                continue
             matrices = [
                 msg.data[idx]
                 for idx in ref.data_indices
@@ -298,19 +393,27 @@ class FsgpBgkSe2Node(Node):
             emitted.add(layer_name)
 
         for layer_name in (
+            "valid",
             "baseline_risk",
             "bgk_mean",
             "bgk_var",
             "bgk_traversability",
-            "seb_risk",
-            "seb_pitch_risk",
-            "seb_roll_risk",
-            "seb_step_risk",
-            "seb_support",
         ):
             if layer_name not in emitted:
                 self._append_layer(out, layer_name, overrides[layer_name], template)
                 emitted.add(layer_name)
+
+        if self.include_diagnostic_layers:
+            for layer_name in (
+                "seb_risk",
+                "seb_pitch_risk",
+                "seb_roll_risk",
+                "seb_step_risk",
+                "seb_support",
+            ):
+                if layer_name not in emitted:
+                    self._append_layer(out, layer_name, overrides[layer_name], template)
+                    emitted.add(layer_name)
 
         return out
 
@@ -336,6 +439,8 @@ class FsgpBgkSe2Node(Node):
                 "bgk_traversability",
             )
         )
+        if not result.seb_risk_slices:
+            return
         yaw_idx = max(0, min(self.debug_yaw_index, len(result.seb_risk_slices) - 1))
         self.seb_cloud_pub.publish(
             self._grid_to_cloud(
@@ -357,8 +462,8 @@ class FsgpBgkSe2Node(Node):
         res = float(msg.info.pos_resolution)
         center_x = float(msg.info.pose.position.x)
         center_y = float(msg.info.pose.position.y)
-        start_x = center_x - 0.5 * float(msg.info.length_x) + float(msg.start_index_col) * res
-        start_y = center_y - 0.5 * float(msg.info.length_y) + float(msg.start_index_row) * res
+        start_x = center_x - 0.5 * float(msg.info.length_x) + 0.5 * res
+        start_y = center_y - 0.5 * float(msg.info.length_y) + 0.5 * res
 
         points = []
         stride = self.debug_cloud_stride
@@ -391,9 +496,12 @@ def main(args: Optional[List[str]] = None) -> None:
     node = FsgpBgkSe2Node()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SRC_DIR="$ROOT_DIR/src"
 RVIZ="true"
 EXTRA_ARGS=()
@@ -54,9 +54,9 @@ fi
 
 echo "[hunter_isaac_livo2] Waiting for Isaac Sim sensor data ..."
 echo "[hunter_isaac_livo2] ROS env: ROS_DISTRO=${ROS_DISTRO:-unset} RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-unset} ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset} ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-unset}"
-if ! "$ROOT_DIR/check_hunter_isaac_topics.sh" 120; then
+if ! "$ROOT_DIR/scripts/sim/checks/topics.sh" 120; then
   echo "[hunter_isaac_livo2] ERROR: timed out waiting for Isaac Sim sensor data." >&2
-  echo "  Start Isaac first with: ./run_hunter_isaac_sim.sh headless:=true" >&2
+  echo "  Start Isaac first with: scripts/sim/start_simulation.sh headless:=true" >&2
   exit 1
 fi
 

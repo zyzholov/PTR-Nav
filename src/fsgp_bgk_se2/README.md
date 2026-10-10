@@ -17,19 +17,39 @@ FAST-LIO2
                                                                                   /car_0_fsgp_bgk/fused_map
 ```
 
-The first implementation uses a GPU-capable BGK-style Gaussian smoother plus a
-SEB yaw sweep over the Hunter footprint. It uses CuPy when available and falls
-back to NumPy on CPU.
+The first implementation uses a CPU/CuPy adaptive BGK-style Gaussian smoother
+plus a SEB yaw sweep over the Hunter footprint. `gpu_backend:=auto` selects
+CuPy for the normal `104x104x36` local map and retains CPU for tiny maps where
+GPU kernel launch overhead dominates. Use `gpu_backend:=cupy` to force GPU
+testing.
 
 ## Run
 
+Start the terrain front-end and FSGP-BGK/SEB enhancement in one terminal:
+
 ```bash
-ros2 launch fsgp_bgk_se2 fsgp_bgk_se2.launch.py
+scripts/sim/start_terrain_analysis.sh terrain_backend:=gpu fsgp_gpu_backend:=cupy
 ```
 
-To make `terrain_nav` consume the enhanced map:
+To inspect the two processes separately, disable enhancement in the main
+terrain script and use the optional launcher in another terminal:
 
 ```bash
-ros2 launch terrain_nav hunter_gazebo_terrain_nav.launch.py \
-  fused_map_topic:=/car_0_fsgp_bgk/fused_map
+scripts/sim/start_terrain_analysis.sh terrain_backend:=gpu enhance:=false
+scripts/sim/optional/start_fsgp_bgk.sh gpu_backend:=cupy
+```
+
+The supported terrain script uses
+`ros2 launch fsgp_bgk_se2 terrain_analysis.launch.py` internally.
+
+Start planning/control separately:
+
+```bash
+scripts/sim/start_planning_control.sh
+```
+
+For manual driving, keep both analysis stages running and then:
+
+```bash
+scripts/sim/start_keyboard_control.sh
 ```

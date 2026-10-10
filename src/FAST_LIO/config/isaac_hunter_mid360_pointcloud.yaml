@@ -4,6 +4,8 @@
         # Isaac publishes /livox/lidar as sensor_msgs/PointCloud2, not the
         # Livox CustomMsg used by the Gazebo Livox plugin.
         feature_extract_enable: false
+        # Dense Isaac tuning. This was the project baseline before the config
+        # was temporarily changed to the sparser upstream MID360 defaults.
         point_filter_num: 1
         max_iteration: 4
         filter_size_surf: 0.20
@@ -28,9 +30,10 @@
             scan_line: 128
             scan_rate: 10
             timestamp_unit: 3
-            # Isaac RTX PointCloud2 does not provide trustworthy per-point
-            # offset time in this bridge path. Do not synthesize a fake 100 ms
-            # scan, because FAST-LIO will over-deskew during turns/slopes.
+            # Isaac RTX PointCloud2 currently exposes xyz only and RTX LiDAR
+            # already publishes motion-free frame clouds unless MotionBVH is
+            # enabled. Keep point times at zero here; synthetic scan-time ramps
+            # over-deskew the simulated clouds during turns.
             synthetic_point_time: false
             blind: 0.20
             # Isaac RTX LiDAR can see parts of the Hunter body/sensor mount.
@@ -52,6 +55,37 @@
             b_gyr_cov: 0.0001
             fov_degree: 360.0
             det_range: 100.0
+            # Delete previously mapped 3D voxels only after three independent
+            # scans contain rays through them to a farther return.
+            dynamic_clear_enabled: true
+            # Propagate only multi-frame direct-clear seeds to the published
+            # history when explicitly enabled for an A/B trial. Keep the
+            # default conservative because static occlusion is safety-critical.
+            dynamic_expand_enabled: false
+            dynamic_clear_frames: 3
+            # Three free-ray observations must be close in time; isolated
+            # ray hits accumulated over minutes must not erase static terrain.
+            dynamic_clear_max_gap_frames: 3
+            # Experimental published-history replacement from lower returns.
+            # Keep disabled: neighboring ground alone cannot prove that an
+            # old static surface is unoccupied, especially during occlusion.
+            dynamic_ground_replace_enabled: false
+            # This experimental path never deletes IKD-tree registration points.
+            dynamic_ground_clear_frames: 3
+            dynamic_ground_min_returns: 2
+            dynamic_ground_max_span: 0.14
+            dynamic_ground_search_radius: 0.24
+            # Keep a conservative vertical separation from the terrain. Low
+            # returns stay in the reactive live layer instead of risking a
+            # static surface in the cumulative map.
+            dynamic_ground_min_height: 0.30
+            dynamic_ground_max_points: 6000
+            # Require a spatially clustered direct-clear signature over more
+            # than one scan before publishing-map neighborhood expansion.
+            dynamic_expand_min_seeds: 3
+            dynamic_max_rays: 10000
+            dynamic_ray_range: 30.0
+            dynamic_endpoint_margin: 0.65
             extrinsic_est_en: false
             # FAST_LIO expects p_imu = R_LI * p_lidar + T_LI.
             # Isaac mount:
@@ -66,11 +100,22 @@
         publish:
             path_en: true
             effect_map_en: false
+            # /cloud_registered remains the low-latency current frame used by
+            # terrain_analyzer. /Laser_map is a voxel-bounded accumulated map.
             map_en: true
+            # A 1 Hz refresh exposes cleared voxels within one publish cycle.
+            map_publish_hz: 1.0
+            # Only the cumulative publication uses full-resolution returns.
+            # Keep EKF registration and terrain input at their existing density.
+            map_dense_en: true
+            map_voxel_size: 0.10
+            map_max_points: 800000
             scan_publish_en: true
             dense_publish_en: false
             scan_bodyframe_pub_en: false
-            local_map_en: true
+            # A radius-80 KD-tree box search on every scan prevents real-time
+            # operation. The terrain chain consumes /cloud_registered.
+            local_map_en: false
             local_map_radius: 80.0
             local_map_z_half: 15.0
 

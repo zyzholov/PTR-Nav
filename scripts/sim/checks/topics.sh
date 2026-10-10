@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TIMEOUT_SEC="${1:-45}"
+SENSOR_PROFILE="${2:-mapping}"
+case "$SENSOR_PROFILE" in
+  mapping|camera) ;;
+  *) echo "Usage: $0 [timeout_seconds] [mapping|camera]" >&2; exit 2 ;;
+esac
 
 if [[ -f /opt/ros/humble/setup.bash ]]; then
   source /opt/ros/humble/setup.bash
@@ -26,10 +31,6 @@ EXPECTED_TOPICS=(
   "/livox/lidar"
   "/imu/data_raw"
   "/livox/imu"
-  "/camera/camera/color/image_raw"
-  "/camera/camera/color/camera_info"
-  "/camera/camera/depth/image_rect_raw"
-  "/camera/camera/depth/color/points"
 )
 
 SAMPLE_CHECKS=(
@@ -37,11 +38,17 @@ SAMPLE_CHECKS=(
   "/livox/lidar:header"
   "/imu/data_raw:header"
   "/livox/imu:header"
-  "/camera/camera/color/image_raw:header"
-  "/camera/camera/color/camera_info:header"
-  "/camera/camera/depth/image_rect_raw:header"
-  "/camera/camera/depth/color/points:header"
 )
+if [[ "$SENSOR_PROFILE" == camera ]]; then
+  EXPECTED_TOPICS+=(
+    "/camera/camera/color/image_raw" "/camera/camera/color/camera_info"
+    "/camera/camera/depth/image_rect_raw" "/camera/camera/depth/color/points"
+  )
+  SAMPLE_CHECKS+=(
+    "/camera/camera/color/image_raw:header" "/camera/camera/color/camera_info:header"
+    "/camera/camera/depth/image_rect_raw:header" "/camera/camera/depth/color/points:header"
+  )
+fi
 
 echo "[hunter_isaac_topics] Waiting up to ${TIMEOUT_SEC}s for Isaac sensor topics and first samples"
 echo "[hunter_isaac_topics] ROS env: ROS_DISTRO=${ROS_DISTRO:-unset} RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-unset} ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset} ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-unset}"

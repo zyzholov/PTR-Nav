@@ -42,7 +42,8 @@ def generate_launch_description():
     chassis_rate_z = LaunchConfiguration("chassis_rate_z")
     chassis_rate_az = LaunchConfiguration("chassis_rate_az")
 
-    fused_map_topic = PythonExpression(["'/car_' + '", car_id, "' + '_terrain_analyzer/fused_map'"])
+    fused_map_topic = LaunchConfiguration("fused_map_topic")
+    risk_query_mode = LaunchConfiguration("risk_query_mode")
     sdf_map_topic = PythonExpression(["'/car_' + '", car_id, "' + '_terrain_analyzer/sdf_map'"])
     elevation_grid_cloud_topic = PythonExpression(["'/car_' + '", car_id, "' + '_terrain_analyzer/elevation_grid_cloud'"])
     sdf_grid_cloud_topic = PythonExpression(["'/car_' + '", car_id, "' + '_terrain_analyzer/sdf_grid_cloud'"])
@@ -69,6 +70,11 @@ def generate_launch_description():
         DeclareLaunchArgument("odom_topic", default_value="/Odometry"),
         DeclareLaunchArgument("mpc_odom_topic", default_value="/Odometry"),
         DeclareLaunchArgument("cloud_topic", default_value="/cloud_registered"),
+        DeclareLaunchArgument(
+            "fused_map_topic",
+            default_value=PythonExpression(["'/car_' + '", car_id, "' + '_terrain_analyzer/fused_map'"]),
+        ),
+        DeclareLaunchArgument("risk_query_mode", default_value="flat_2d", choices=["flat_2d", "se2_yaw"]),
         DeclareLaunchArgument("cmd_vel_topic", default_value="/cmd_vel"),
         DeclareLaunchArgument("chassis_odom_topic", default_value="/odom"),
         DeclareLaunchArgument("can_hub_addr", default_value="10.233.233.1"),
@@ -242,6 +248,7 @@ def generate_launch_description():
                     "use_sim_time": use_sim_time,
                     "odom_topic": odom_topic,
                     "fused_map_topic": fused_map_topic,
+                    "risk_query_mode": risk_query_mode,
                     "cmd_topic": cmd_vel_topic,
                 },
             ],

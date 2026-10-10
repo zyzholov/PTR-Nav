@@ -6,34 +6,49 @@ terrain_nav_node:
     fused_map_topic: /car_0_terrain_analyzer/fused_map
     cmd_topic: /hunter_se/cmd_vel
     frame_id: map
+    live_obstacle_enable: true
+    live_cloud_topic: /cloud_registered
+    live_obstacle_min_height: 0.32
+    # A 0.85 m local ground neighborhood keeps the live obstacle detector
+    # responsive while the inflated hard mask still protects the footprint.
+    live_obstacle_neighbor_radius: 0.85
+    live_obstacle_min_hits: 2
+    live_obstacle_max_age_sec: 0.90
+    live_obstacle_hold_sec: 1.00
+    live_obstacle_inflation_radius: 0.25
 
     wheel_base: 0.549
-    max_steer: 0.5236
+    # Keep the planner model identical to the Isaac Hunter command clamps.
+    max_steer: 0.40
     max_steer_rate: 4.0
-    max_speed: 2.8
+    max_speed: 1.33
     min_speed: 0.0
-    desired_speed: 2.05
-    min_tracking_speed: 0.95
+    reverse_enable: true
+    reverse_max_distance: 4.0
+    reverse_max_speed: 0.55
+    desired_speed: 1.20
+    min_tracking_speed: 0.55
     goal_slowdown_distance: 0.85
-    max_accel: 4.0
+    max_accel: 1.20
 
     footprint_front: 0.42
     footprint_back: 0.42
     footprint_half_width: 0.313
-    footprint_margin: 0.10
+    footprint_margin: 0.04
 
     yaw_bins: 72
     primitive_length: 0.42
     integration_step: 0.10
-    max_search_time_ms: 110.0
-    max_iterations: 24000
+    max_search_time_ms: 90.0
+    max_iterations: 18000
     goal_tolerance: 0.42
+    goal_reached_distance: 0.60
     goal_yaw_tolerance: 0.95
     local_goal_distance: 8.0
     local_goal_bearing_limit: 1.55
     direct_goal_bearing_limit: 1.90
     guide_search_enable: true
-    guide_max_expansions: 9000
+    guide_max_expansions: 6000
     guide_min_distance: 2.2
     guide_boundary_margin: 0.9
     guide_progress_weight: 2.4
@@ -53,13 +68,19 @@ terrain_nav_node:
     risk_query_mode: flat_2d
     se2_risk_layer: risk
     hard_risk_layer: baseline_risk
+    se2_risk_lethal: false
     unknown_cost: 60.0
-    allow_unknown: true
+    allow_unknown: false
+    unknown_robot_bubble_radius: 1.25
+    unknown_robot_bubble_max_baseline: 0.08
+    max_odom_age_sec: 0.5
+    max_map_age_sec: 1.0
     risk_weight: 3.6
-    clearance_distance: 1.10
-    clearance_weight: 6.2
-    comfort_clearance_distance: 2.25
-    comfort_clearance_weight: 8.8
+    clearance_distance: 0.65
+    clearance_weight: 4.2
+    hard_clearance_floor: 0.16
+    comfort_clearance_distance: 1.35
+    comfort_clearance_weight: 5.2
     comfort_clearance_risk_threshold: 0.14
     steer_weight: 0.82
     steer_change_weight: 1.40
@@ -67,7 +88,9 @@ terrain_nav_node:
     smoothing_passes: 2
     shortcut_smoothing_enable: true
     reference_resample_spacing: 0.22
-    reference_smooth_iterations: 64
+    # Keep the reference path visually smooth without spending the planner
+    # budget on dozens of identical refinement passes.
+    reference_smooth_iterations: 20
     reference_smooth_step: 0.24
     reference_anchor_weight: 0.11
     reference_smooth_weight: 1.22
@@ -81,7 +104,7 @@ terrain_nav_node:
     max_extra_path_ratio: 2.35
     accept_partial_progress: true
 
-    replan_min_interval: 0.55
+    replan_min_interval: 0.25
     replan_path_remaining: 2.20
     replan_track_error: 0.58
     replan_goal_shift: 0.35
@@ -97,7 +120,8 @@ terrain_nav_node:
     steer_output_sign: 1.0
 
     use_mppi: false
-    control_period: 0.04
+    # Pure-pursuit remains cheap enough at 50 Hz; planning is asynchronous.
+    control_period: 0.02
     mppi_dt: 0.10
     mppi_steps: 24
     mppi_batch_size: 320

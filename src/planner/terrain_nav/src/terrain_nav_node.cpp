@@ -3,26 +3,34 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <numeric>
 #include <optional>
 #include <queue>
 #include <random>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include "terrain_nav/reverse_arc.hpp"
 
 #include <Eigen/Core>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <se2_grid_core/SE2Grid.hpp>
 #include <se2_grid_msgs/msg/se2_grid.hpp>
 #include <se2_grid_ros/SE2GridRosConverter.hpp>
@@ -53,6 +61,7 @@ struct Pose2
   double y = 0.0;
   double yaw = 0.0;
   double s = 0.0;
+  int direction = 1;
 };
 
 struct OdomState
@@ -75,6 +84,32 @@ struct CostQuery
   double comfort_clearance = kInf;
   double cost = 0.0;
 };
+
+// Readers retain a complete generation without holding the search mutex.
+struct ControlMapSnapshot
+{
+  se2_grid::SE2Grid grid;
+  rclcpp::Time stamp;
+  double min_x = 0.0, min_y = 0.0, resolution = 0.2;
+  int width = 0, height = 0;
+  std::vector<uint8_t> costs;
+  std::vector<float> unknown_baseline, clearance, comfort_clearance;
+};
+
+struct LiveObstacleSnapshot
+{
+  double min_x = 0.0, min_y = 0.0, resolution = 0.2, stamp_sec = 0.0;
+  int width = 0, height = 0;
+  std::vector<uint8_t> hard;
+
+  bool occupied(double x, double y) const
+  {
+    const int ix = static_cast<int>(std::floor((x - min_x) / resolution));
+    const int iy = static_cast<int>(std::floor((y - min_y) / resolution));
+    return ix >= 0 && ix < width && iy >= 0 && iy < height &&
+      hard[static_cast<size_t>(iy * width + ix)] != 0;
+  }
+};
 }  // namespace
 
 class TerrainNavNode final : public rclcpp::Node
@@ -86,12 +121,25 @@ public:
     loadParameters();
 
     auto sensor_qos = rclcpp::SensorDataQoS();
+    map_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    odom_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    live_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    control_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions map_options, odom_options, live_options;
+    map_options.callback_group = map_group_;
+    odom_options.callback_group = odom_group_;
+    live_options.callback_group = live_group_;
     map_sub_ = create_subscription<se2_grid_msgs::msg::SE2Grid>(
       fused_map_topic_, rclcpp::QoS(rclcpp::KeepLast(1)),
-      std::bind(&TerrainNavNode::mapCallback, this, std::placeholders::_1));
+      std::bind(&TerrainNavNode::mapCallback, this, std::placeholders::_1), map_options);
+    if (live_obstacle_enable_) {
+      cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+        live_cloud_topic_, sensor_qos,
+        std::bind(&TerrainNavNode::cloudCallback, this, std::placeholders::_1), live_options);
+    }
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       odom_topic_, rclcpp::QoS(rclcpp::KeepLast(5)),
-      std::bind(&TerrainNavNode::odomCallback, this, std::placeholders::_1));
+      std::bind(&TerrainNavNode::odomCallback, this, std::placeholders::_1), odom_options);
     goal_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       "/goal_pose", rclcpp::QoS(rclcpp::KeepLast(1)),
       std::bind(&TerrainNavNode::goalCallback, this, std::placeholders::_1));
@@ -100,8 +148,10 @@ public:
       std::bind(&TerrainNavNode::goalCallback, this, std::placeholders::_1));
 
     auto marker_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
-    cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>(cmd_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+    cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>(cmd_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
     path_pub_ = create_publisher<nav_msgs::msg::Path>("/terrain_nav/path", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+    live_obstacle_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
+      "/terrain_nav/live_obstacles", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
     ref_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>("/reference_path", marker_qos);
     guidance_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>("/visualization/terrain_guidance_path", marker_qos);
     goal_marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>("/terrain_nav/active_goal", marker_qos);
@@ -112,12 +162,25 @@ public:
 
     control_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(control_period_)),
-      std::bind(&TerrainNavNode::controlTimer, this));
+      std::bind(&TerrainNavNode::controlTimer, this), control_group_);
+
+    planner_thread_ = std::thread(&TerrainNavNode::plannerLoop, this);
 
     RCLCPP_INFO(
       get_logger(),
       "terrain_nav ready: odom=%s fused_map=%s goal=/goal_pose cmd=%s wheel_base=%.3f max_steer=%.3f",
       odom_topic_.c_str(), fused_map_topic_.c_str(), cmd_topic_.c_str(), wheel_base_, max_steer_);
+  }
+
+  ~TerrainNavNode() override
+  {
+    {
+      std::lock_guard<std::mutex> lock(planner_mutex_);
+      planner_stop_ = true;
+      planner_wakeup_ = true;
+    }
+    planner_cv_.notify_one();
+    if (planner_thread_.joinable()) planner_thread_.join();
   }
 
 private:
@@ -127,12 +190,23 @@ private:
     declare_parameter("fused_map_topic", "/car_0_terrain_analyzer/fused_map");
     declare_parameter("cmd_topic", "/hunter_se/cmd_vel");
     declare_parameter("frame_id", "map");
+    declare_parameter("live_obstacle_enable", false);
+    declare_parameter("live_cloud_topic", "/cloud_registered");
+    declare_parameter("live_obstacle_min_height", 0.38);
+    declare_parameter("live_obstacle_neighbor_radius", 0.75);
+    declare_parameter("live_obstacle_min_hits", 3);
+    declare_parameter("live_obstacle_max_age_sec", 0.60);
+    declare_parameter("live_obstacle_hold_sec", 1.20);
+    declare_parameter("live_obstacle_inflation_radius", 0.45);
 
     declare_parameter("wheel_base", 0.549);
     declare_parameter("max_steer", 0.5236);
     declare_parameter("max_steer_rate", 2.6);
     declare_parameter("max_speed", 2.0);
     declare_parameter("min_speed", 0.0);
+    declare_parameter("reverse_enable", true);
+    declare_parameter("reverse_max_distance", 4.0);
+    declare_parameter("reverse_max_speed", 0.55);
     declare_parameter("desired_speed", 1.0);
     declare_parameter("min_tracking_speed", 0.35);
     declare_parameter("goal_slowdown_distance", 0.90);
@@ -149,6 +223,7 @@ private:
     declare_parameter("max_search_time_ms", 150.0);
     declare_parameter("max_iterations", 26000);
     declare_parameter("goal_tolerance", 0.42);
+    declare_parameter("goal_reached_distance", 0.55);
     declare_parameter("goal_yaw_tolerance", 0.95);
     declare_parameter("local_goal_distance", 8.0);
     declare_parameter("local_goal_bearing_limit", 1.20);
@@ -174,11 +249,20 @@ private:
     declare_parameter("risk_query_mode", "flat_2d");
     declare_parameter("se2_risk_layer", "risk");
     declare_parameter("hard_risk_layer", "baseline_risk");
+    declare_parameter("se2_risk_lethal", false);
     declare_parameter("unknown_cost", 60.0);
     declare_parameter("allow_unknown", true);
+    declare_parameter("unknown_robot_bubble_radius", 0.0);
+    declare_parameter("unknown_robot_bubble_max_baseline", 0.0);
+    declare_parameter("max_odom_age_sec", 0.5);
+    declare_parameter("max_map_age_sec", 1.0);
+    declare_parameter("stuck_timeout_sec", 4.0);
+    declare_parameter("stuck_progress_m", 0.12);
+    declare_parameter("stuck_command_mps", 0.25);
     declare_parameter("risk_weight", 3.0);
     declare_parameter("clearance_distance", 0.85);
     declare_parameter("clearance_weight", 2.8);
+    declare_parameter("hard_clearance_floor", -1.0);
     declare_parameter("comfort_clearance_distance", 1.35);
     declare_parameter("comfort_clearance_weight", 2.2);
     declare_parameter("comfort_clearance_risk_threshold", 0.18);
@@ -248,10 +332,23 @@ private:
 
   void loadParameters()
   {
+    get_parameter("reverse_enable", reverse_enable_);
+    get_parameter("reverse_max_distance", reverse_max_distance_);
+    get_parameter("reverse_max_speed", reverse_max_speed_);
+    reverse_max_speed_ = std::clamp(reverse_max_speed_, 0.1, 0.8);
+    reverse_max_distance_ = std::clamp(reverse_max_distance_, 0.5, 6.0);
     get_parameter("odom_topic", odom_topic_);
     get_parameter("fused_map_topic", fused_map_topic_);
     get_parameter("cmd_topic", cmd_topic_);
     get_parameter("frame_id", frame_id_);
+    get_parameter("live_obstacle_enable", live_obstacle_enable_);
+    get_parameter("live_cloud_topic", live_cloud_topic_);
+    get_parameter("live_obstacle_min_height", live_obstacle_min_height_);
+    get_parameter("live_obstacle_neighbor_radius", live_obstacle_neighbor_radius_);
+    get_parameter("live_obstacle_min_hits", live_obstacle_min_hits_);
+    get_parameter("live_obstacle_max_age_sec", live_obstacle_max_age_sec_);
+    get_parameter("live_obstacle_hold_sec", live_obstacle_hold_sec_);
+    get_parameter("live_obstacle_inflation_radius", live_obstacle_inflation_radius_);
 
     get_parameter("wheel_base", wheel_base_);
     get_parameter("max_steer", max_steer_);
@@ -274,6 +371,7 @@ private:
     get_parameter("max_search_time_ms", max_search_time_ms_);
     get_parameter("max_iterations", max_iterations_);
     get_parameter("goal_tolerance", goal_tolerance_);
+    get_parameter("goal_reached_distance", goal_reached_distance_);
     get_parameter("goal_yaw_tolerance", goal_yaw_tolerance_);
     get_parameter("local_goal_distance", local_goal_distance_);
     get_parameter("local_goal_bearing_limit", local_goal_bearing_limit_);
@@ -299,11 +397,20 @@ private:
     get_parameter("risk_query_mode", risk_query_mode_);
     get_parameter("se2_risk_layer", se2_risk_layer_);
     get_parameter("hard_risk_layer", hard_risk_layer_);
+    get_parameter("se2_risk_lethal", se2_risk_lethal_);
     get_parameter("unknown_cost", unknown_cost_);
     get_parameter("allow_unknown", allow_unknown_);
+    get_parameter("unknown_robot_bubble_radius", unknown_robot_bubble_radius_);
+    get_parameter("unknown_robot_bubble_max_baseline", unknown_robot_bubble_max_baseline_);
+    get_parameter("max_odom_age_sec", max_odom_age_sec_);
+    get_parameter("max_map_age_sec", max_map_age_sec_);
+    get_parameter("stuck_timeout_sec", stuck_timeout_sec_);
+    get_parameter("stuck_progress_m", stuck_progress_m_);
+    get_parameter("stuck_command_mps", stuck_command_mps_);
     get_parameter("risk_weight", risk_weight_);
     get_parameter("clearance_distance", clearance_distance_);
     get_parameter("clearance_weight", clearance_weight_);
+    get_parameter("hard_clearance_floor", hard_clearance_floor_);
     get_parameter("comfort_clearance_distance", comfort_clearance_distance_);
     get_parameter("comfort_clearance_weight", comfort_clearance_weight_);
     get_parameter("comfort_clearance_risk_threshold", comfort_clearance_risk_threshold_);
@@ -371,12 +478,19 @@ private:
     get_parameter("path_commit_max_track_error", path_commit_max_track_error_);
 
     yaw_bins_ = std::max(16, yaw_bins_);
+    live_obstacle_min_height_ = std::clamp(live_obstacle_min_height_, 0.15, 1.5);
+    live_obstacle_neighbor_radius_ = std::clamp(live_obstacle_neighbor_radius_, 0.2, 2.0);
+    live_obstacle_min_hits_ = std::clamp(live_obstacle_min_hits_, 1, 20);
+    live_obstacle_max_age_sec_ = std::clamp(live_obstacle_max_age_sec_, 0.15, 2.0);
+    live_obstacle_hold_sec_ = std::clamp(live_obstacle_hold_sec_, 0.2, 3.0);
+    live_obstacle_inflation_radius_ = std::clamp(live_obstacle_inflation_radius_, 0.0, 1.0);
     mppi_steps_ = std::clamp(mppi_steps_, 8, 60);
     mppi_batch_size_ = std::clamp(mppi_batch_size_, 32, 1600);
     max_steer_ = std::clamp(max_steer_, 0.05, 1.2);
     desired_speed_ = std::clamp(desired_speed_, std::max(0.0, min_speed_), max_speed_);
     min_tracking_speed_ = std::clamp(min_tracking_speed_, std::max(0.0, min_speed_), desired_speed_);
     goal_slowdown_distance_ = std::max(0.20, goal_slowdown_distance_);
+    goal_reached_distance_ = std::clamp(goal_reached_distance_, goal_tolerance_, std::max(0.60, 2.0 * goal_tolerance_));
     local_goal_bearing_limit_ = std::clamp(local_goal_bearing_limit_, 0.45, M_PI);
     direct_goal_bearing_limit_ = std::clamp(direct_goal_bearing_limit_, local_goal_bearing_limit_, M_PI);
     guide_max_expansions_ = std::clamp(guide_max_expansions_, 512, 40000);
@@ -391,6 +505,14 @@ private:
     guide_heading_weight_ = std::clamp(guide_heading_weight_, 0.0, 3.0);
     if (risk_query_mode_ != "se2_yaw")
       risk_query_mode_ = "flat_2d";
+    unknown_robot_bubble_radius_ = std::clamp(unknown_robot_bubble_radius_, 0.0, 1.25);
+    unknown_robot_bubble_max_baseline_ = std::clamp(unknown_robot_bubble_max_baseline_, 0.0, risk_hard_threshold_);
+    max_odom_age_sec_ = std::max(0.2, max_odom_age_sec_);
+    max_map_age_sec_ = std::max(0.3, max_map_age_sec_);
+    stuck_timeout_sec_ = std::clamp(stuck_timeout_sec_, 1.0, 15.0);
+    stuck_progress_m_ = std::clamp(stuck_progress_m_, 0.03, 0.5);
+    stuck_command_mps_ = std::clamp(stuck_command_mps_, 0.05, max_speed_);
+    hard_clearance_floor_ = std::clamp(hard_clearance_floor_, -1.0, 1.5);
     direct_curve_max_length_ratio_ = std::clamp(direct_curve_max_length_ratio_, 1.05, 3.0);
     direct_curve_max_lateral_ratio_ = std::clamp(direct_curve_max_lateral_ratio_, 0.15, 1.5);
     direct_curve_clearance_weight_ = std::clamp(direct_curve_clearance_weight_, 0.0, 20.0);
@@ -431,7 +553,12 @@ private:
   {
     se2_grid::SE2Grid grid;
     try {
-      se2_grid::SE2GridRosConverter::fromMessage(*msg, grid);
+      if (!se2_grid::SE2GridRosConverter::fromMessage(*msg, grid)) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Failed to parse fused_map: invalid SE2Grid message layout");
+        return;
+      }
     } catch (const std::exception &e) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Failed to parse fused_map: %s", e.what());
       return;
@@ -441,14 +568,205 @@ private:
     map_ = std::move(grid);
     rebuildCostmapLocked();
     map_stamp_ = msg->info.header.stamp;
+    auto snapshot = std::make_shared<ControlMapSnapshot>();
+    snapshot->grid = map_;
+    snapshot->stamp = map_stamp_;
+    snapshot->min_x = min_x_;
+    snapshot->min_y = min_y_;
+    snapshot->resolution = resolution_;
+    snapshot->width = width_;
+    snapshot->height = height_;
+    snapshot->costs = costs_;
+    snapshot->unknown_baseline = unknown_baseline_;
+    snapshot->clearance = clearance_;
+    snapshot->comfort_clearance = comfort_clearance_;
+    std::atomic_store(&control_map_snapshot_, std::shared_ptr<const ControlMapSnapshot>(snapshot));
     map_ready_ = true;
     map_dirty_ = true;
+    map_update_seq_.fetch_add(1, std::memory_order_release);
     if (!logged_map_ready_.exchange(true)) {
       RCLCPP_INFO(
         get_logger(),
-        "terrain_nav fused_map ready: cells=%dx%d yaw=%d res=%.3f range=[%.2f %.2f]x[%.2f %.2f]",
-        width_, height_, yaw_bins_, resolution_, min_x_, max_x_, min_y_, max_y_);
+        "terrain_nav fused_map ready: cells=%dx%d map_yaw_slices=%d planner_yaw_bins=%d "
+        "res=%.3f range=[%.2f %.2f]x[%.2f %.2f]",
+        width_, height_, map_.getSizeYaw(), yaw_bins_, resolution_,
+        min_x_, max_x_, min_y_, max_y_);
     }
+  }
+
+  void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  {
+    if (msg->header.frame_id != frame_id_ || msg->point_step == 0) return;
+    const auto has_float_field = [&](const char *name) {
+      return std::any_of(msg->fields.begin(), msg->fields.end(), [&](const auto &field) {
+        return field.name == name && field.datatype == sensor_msgs::msg::PointField::FLOAT32;
+      });
+    };
+    if (!has_float_field("x") || !has_float_field("y") || !has_float_field("z")) return;
+
+    const auto geometry = std::atomic_load(&control_map_snapshot_);
+    if (!geometry || geometry->width <= 0 || geometry->height <= 0) return;
+    const double min_x = geometry->min_x, min_y = geometry->min_y, resolution = geometry->resolution;
+    const int width = geometry->width, height = geometry->height;
+
+    const size_t cells = static_cast<size_t>(width * height);
+    std::vector<float> min_z(cells, std::numeric_limits<float>::infinity());
+    const auto cell_for = [&](float x, float y) {
+      const int ix = static_cast<int>(std::floor((x - min_x) / resolution));
+      const int iy = static_cast<int>(std::floor((y - min_y) / resolution));
+      return ix >= 0 && ix < width && iy >= 0 && iy < height ? iy * width + ix : -1;
+    };
+    try {
+      sensor_msgs::PointCloud2ConstIterator<float> x(*msg, "x"), y(*msg, "y"), z(*msg, "z");
+      for (; x != x.end(); ++x, ++y, ++z) {
+        if (!std::isfinite(*x) || !std::isfinite(*y) || !std::isfinite(*z)) continue;
+        const int cell = cell_for(*x, *y);
+        if (cell >= 0) {
+          min_z[static_cast<size_t>(cell)] = std::min(min_z[static_cast<size_t>(cell)], *z);
+        }
+      }
+    } catch (const std::exception &e) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "live obstacle cloud rejected: %s", e.what());
+      return;
+    }
+
+    std::vector<float> ground_z(cells, std::numeric_limits<float>::infinity());
+    const int radius = std::max(1, static_cast<int>(std::ceil(live_obstacle_neighbor_radius_ / resolution)));
+    for (int iy = 0; iy < height; ++iy) {
+      for (int ix = 0; ix < width; ++ix) {
+        const size_t cell = static_cast<size_t>(iy * width + ix);
+        if (!std::isfinite(min_z[cell])) continue;
+        float base = min_z[cell];
+        for (int dy = -radius; dy <= radius; ++dy) {
+          for (int dx = -radius; dx <= radius; ++dx) {
+            if (dx * dx + dy * dy > radius * radius) continue;
+            const int nx = ix + dx, ny = iy + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height)
+              base = std::min(base, min_z[static_cast<size_t>(ny * width + nx)]);
+          }
+        }
+        ground_z[cell] = base;
+      }
+    }
+
+    std::vector<uint8_t> tall_hits(cells, 0);
+    sensor_msgs::PointCloud2ConstIterator<float> x(*msg, "x"), y(*msg, "y"), z(*msg, "z");
+    for (; x != x.end(); ++x, ++y, ++z) {
+      if (!std::isfinite(*x) || !std::isfinite(*y) || !std::isfinite(*z)) continue;
+      const int cell = cell_for(*x, *y);
+      if (cell >= 0 && *z - ground_z[static_cast<size_t>(cell)] >= live_obstacle_min_height_) {
+        auto &hits = tall_hits[static_cast<size_t>(cell)];
+        if (hits < 255) ++hits;
+      }
+    }
+    const double stamp_sec = rclcpp::Time(msg->header.stamp).seconds();
+    const double received_sec = now().seconds();
+    if (stamp_sec > 0.0 && received_sec - stamp_sec > live_obstacle_max_age_sec_) return;
+    std::vector<uint8_t> hard(cells, 0);
+    {
+      std::vector<double> expiry(cells, 0.0);
+      std::vector<uint8_t> free_scans(cells, 0);
+      if (live_expiry_.size() == cells && min_x == live_min_x_ && min_y == live_min_y_ &&
+          resolution == live_resolution_ && width == live_width_ && height == live_height_) {
+        expiry = live_expiry_;
+        if (live_free_scans_.size() == cells) free_scans = live_free_scans_;
+      } else {
+        for (int iy = 0; iy < live_height_; ++iy) {
+          for (int ix = 0; ix < live_width_; ++ix) {
+            const size_t old_cell = static_cast<size_t>(iy * live_width_ + ix);
+            if (old_cell >= live_expiry_.size() || live_expiry_[old_cell] <= received_sec) continue;
+            const int cell = cell_for(
+              static_cast<float>(live_min_x_ + (ix + 0.5) * live_resolution_),
+              static_cast<float>(live_min_y_ + (iy + 0.5) * live_resolution_));
+            if (cell >= 0) {
+              expiry[static_cast<size_t>(cell)] = live_expiry_[old_cell];
+              if (old_cell < live_free_scans_.size())
+                free_scans[static_cast<size_t>(cell)] = live_free_scans_[old_cell];
+            }
+          }
+        }
+      }
+      for (size_t i = 0; i < cells; ++i) {
+        if (tall_hits[i] >= live_obstacle_min_hits_) {
+          expiry[i] = received_sec + live_obstacle_hold_sec_;
+          free_scans[i] = 0;
+        } else if (tall_hits[i] == 0 && std::isfinite(min_z[i]) &&
+                   std::isfinite(ground_z[i]) && min_z[i] - ground_z[i] < 0.15f) {
+          free_scans[i] = std::min<int>(2, free_scans[i] + 1);
+          if (free_scans[i] >= 2) expiry[i] = 0.0;
+        }
+        hard[i] = expiry[i] > received_sec ? 1 : 0;
+      }
+      const int inflation_cells = static_cast<int>(std::ceil(live_obstacle_inflation_radius_ / resolution));
+      if (inflation_cells > 0) {
+        std::vector<uint8_t> inflated = hard;
+        for (int iy = 0; iy < height; ++iy) {
+          for (int ix = 0; ix < width; ++ix) {
+            if (!hard[static_cast<size_t>(iy * width + ix)]) continue;
+            for (int dy = -inflation_cells; dy <= inflation_cells; ++dy) {
+              for (int dx = -inflation_cells; dx <= inflation_cells; ++dx) {
+                if (std::hypot(dx * resolution, dy * resolution) > live_obstacle_inflation_radius_) continue;
+                const int nx = ix + dx, ny = iy + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height)
+                  inflated[static_cast<size_t>(ny * width + nx)] = 1;
+              }
+            }
+          }
+        }
+        hard.swap(inflated);
+      }
+      const bool changed = hard != live_hard_ || min_x != live_min_x_ || min_y != live_min_y_;
+      live_hard_ = hard;
+      live_expiry_ = std::move(expiry);
+      live_free_scans_ = std::move(free_scans);
+      live_min_x_ = min_x;
+      live_min_y_ = min_y;
+      live_resolution_ = resolution;
+      live_width_ = width;
+      live_height_ = height;
+      auto snapshot = std::make_shared<LiveObstacleSnapshot>();
+      snapshot->min_x = min_x;
+      snapshot->min_y = min_y;
+      snapshot->resolution = resolution;
+      snapshot->width = width;
+      snapshot->height = height;
+      snapshot->stamp_sec = stamp_sec > 0.0 ? stamp_sec : received_sec;
+      snapshot->hard = hard;
+      std::atomic_store(&live_snapshot_, std::shared_ptr<const LiveObstacleSnapshot>(snapshot));
+      if (changed) live_dirty_ = true;
+    }
+
+    nav_msgs::msg::OccupancyGrid display;
+    display.header = msg->header;
+    display.info.resolution = static_cast<float>(resolution);
+    display.info.width = width;
+    display.info.height = height;
+    display.info.origin.position.x = min_x;
+    display.info.origin.position.y = min_y;
+    display.info.origin.orientation.w = 1.0;
+    display.data.assign(cells, -1);
+    int obstacle_cells = 0;
+    double nearest_obstacle = kInf;
+    double nearest_x = 0.0, nearest_y = 0.0;
+    const double robot_x = unknown_robot_x_.load(), robot_y = unknown_robot_y_.load();
+    for (size_t i = 0; i < cells; ++i) {
+      if (!hard[i]) continue;
+      display.data[i] = 100;
+      ++obstacle_cells;
+      const double wx = min_x + (static_cast<int>(i) % width + 0.5) * resolution;
+      const double wy = min_y + (static_cast<int>(i) / width + 0.5) * resolution;
+      const double distance = std::hypot(wx - robot_x, wy - robot_y);
+      if (distance < nearest_obstacle) {
+        nearest_obstacle = distance;
+        nearest_x = wx;
+        nearest_y = wy;
+      }
+    }
+    live_obstacle_pub_->publish(display);
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 3000,
+      "live obstacle cloud: %d occupied cells from %ux%u points; nearest=%.2fm at (%.2f, %.2f)",
+      obstacle_cells, msg->width, msg->height, nearest_obstacle, nearest_x, nearest_y);
   }
 
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -508,6 +826,9 @@ private:
       odom_.yaw_rate = estimated_odom_yaw_rate_;
       odom_.stamp = msg->header.stamp;
       odom_.valid = true;
+      unknown_robot_x_.store(x);
+      unknown_robot_y_.store(y);
+      unknown_robot_pose_ready_.store(true);
 
       prev_pose_speed_x_ = x;
       prev_pose_speed_y_ = y;
@@ -535,17 +856,25 @@ private:
     tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
 
     Pose2 accepted_goal;
+    bool new_goal = false;
     {
       std::lock_guard<std::mutex> lock(goal_mutex_);
-      raw_goal_.x = msg->pose.position.x;
-      raw_goal_.y = msg->pose.position.y;
-      raw_goal_.yaw = wrapAngle(yaw);
-      raw_goal_.s = 0.0;
+      const double requested_yaw = wrapAngle(yaw);
+      new_goal = !have_goal_ ||
+        std::hypot(raw_goal_.x - msg->pose.position.x, raw_goal_.y - msg->pose.position.y) > 0.05 ||
+        std::abs(wrapAngle(raw_goal_.yaw - requested_yaw)) > 0.05;
+      if (new_goal) {
+        raw_goal_.x = msg->pose.position.x;
+        raw_goal_.y = msg->pose.position.y;
+        raw_goal_.yaw = requested_yaw;
+        raw_goal_.s = 0.0;
+        ++goal_seq_;
+      }
       accepted_goal = raw_goal_;
       have_goal_ = true;
-      goal_seq_++;
-      plan_requested_ = true;
     }
+    if (!new_goal) return;
+    requestPlan("new goal");
 
     OdomState odom_snapshot;
     {
@@ -559,6 +888,12 @@ private:
       odom_snapshot.valid ? "ready" : "waiting",
       map_ready_ ? "ready" : "waiting");
     publishActiveGoal(accepted_goal);
+    // A failed new goal must not leave the vehicle following the previous goal.
+    if (new_goal) {
+      std::lock_guard<std::mutex> lock(path_mutex_);
+      path_.clear();
+      have_path_ = false;
+    }
   }
 
   void rebuildCostmapLocked()
@@ -567,6 +902,7 @@ private:
       width_ = height_ = 0;
       costs_.clear();
       hard_.clear();
+      unknown_baseline_.clear();
       clearance_.clear();
       comfort_clearance_.clear();
       return;
@@ -583,6 +919,7 @@ private:
     height_ = std::max(1, static_cast<int>(std::ceil((max_y_ - min_y_) / resolution_)));
     costs_.assign(static_cast<size_t>(width_ * height_), 0);
     hard_.assign(static_cast<size_t>(width_ * height_), 0);
+    unknown_baseline_.assign(static_cast<size_t>(width_ * height_), 1.0f);
     clearance_.assign(static_cast<size_t>(width_ * height_), static_cast<float>(clearance_distance_ + 2.0));
     comfort_clearance_.assign(
       static_cast<size_t>(width_ * height_), static_cast<float>(comfort_clearance_distance_ + 2.0));
@@ -620,9 +957,19 @@ private:
           }
         }
 
+        if (map_.exists("collision_risk")) {
+          const double collision = map_.getValue("collision_risk", Eigen::Vector3d(wx, wy, 0.0),
+                                                se2_grid::InterpolationMethods::INTER_NEAREST);
+          if (std::isfinite(collision) && collision >= 0.5) {
+            known = true;
+            risk = 1.0;
+          }
+        }
+
         if (!known) {
           costs_[idx] = 255;
           hard_[idx] = 0;
+          if (std::isfinite(risk)) unknown_baseline_[idx] = static_cast<float>(std::clamp(risk, 0.0, 1.0));
           continue;
         }
 
@@ -724,43 +1071,75 @@ private:
     return ix >= 0 && ix < width_ && iy >= 0 && iy < height_;
   }
 
-  CostQuery queryCostLocked(double x, double y, double yaw = 0.0) const
+  CostQuery queryCostLocked(
+    double x, double y, double yaw = 0.0, bool allow_fresh_unknown = false,
+    const ControlMapSnapshot *snapshot = nullptr) const
   {
+    const auto &grid = snapshot ? snapshot->grid : map_;
+    const auto &costs = snapshot ? snapshot->costs : costs_;
+    const auto &unknown_baseline = snapshot ? snapshot->unknown_baseline : unknown_baseline_;
+    const auto &clearance = snapshot ? snapshot->clearance : clearance_;
+    const auto &comfort_clearance = snapshot ? snapshot->comfort_clearance : comfort_clearance_;
+    const double min_x = snapshot ? snapshot->min_x : min_x_;
+    const double min_y = snapshot ? snapshot->min_y : min_y_;
+    const double resolution = snapshot ? snapshot->resolution : resolution_;
+    const int width = snapshot ? snapshot->width : width_;
+    const int height = snapshot ? snapshot->height : height_;
+    const auto live = std::atomic_load(&live_snapshot_);
     CostQuery out;
-    int ix = 0, iy = 0;
-    if (!worldToCostCell(x, y, ix, iy)) {
+    if (live && live->occupied(x, y)) {
+      out.known = true;
+      out.lethal = true;
+      out.risk = 1.0;
+      out.clearance = 0.0;
+      out.comfort_clearance = 0.0;
+      out.cost = mppi_collision_cost_;
+      return out;
+    }
+    const int ix = static_cast<int>(std::floor((x - min_x) / resolution));
+    const int iy = static_cast<int>(std::floor((y - min_y) / resolution));
+    if (ix < 0 || iy < 0 || ix >= width || iy >= height) {
       out.known = false;
       out.lethal = !allow_unknown_;
       out.cost = allow_unknown_ ? unknown_cost_ : mppi_collision_cost_;
       return out;
     }
 
-    const auto idx = static_cast<size_t>(iy * width_ + ix);
-    const uint8_t c = costs_[idx];
+    const auto idx = static_cast<size_t>(iy * width + ix);
+    const uint8_t c = costs[idx];
     if (c == 255) {
       out.known = false;
-      out.lethal = !allow_unknown_;
+      const double dx = x - unknown_robot_x_.load();
+      const double dy = y - unknown_robot_y_.load();
+      const bool robot_bubble = !allow_unknown_ && unknown_robot_pose_ready_.load() &&
+        unknown_robot_bubble_radius_ > 0.0 &&
+        dx * dx + dy * dy <= unknown_robot_bubble_radius_ * unknown_robot_bubble_radius_ &&
+        unknown_baseline[idx] <= unknown_robot_bubble_max_baseline_;
+      const bool fresh_live_scan = allow_fresh_unknown && live &&
+        (now().seconds() - live->stamp_sec <= live_obstacle_max_age_sec_);
+      out.lethal = !allow_unknown_ && !robot_bubble && !fresh_live_scan;
       out.cost = allow_unknown_ ? unknown_cost_ : mppi_collision_cost_;
-      out.clearance = clearance_[idx];
-      out.comfort_clearance = comfort_clearance_.empty() ? out.clearance : comfort_clearance_[idx];
+      if (robot_bubble) out.cost = unknown_cost_;
+      out.clearance = clearance[idx];
+      out.comfort_clearance = comfort_clearance.empty() ? out.clearance : comfort_clearance[idx];
       return out;
     }
     out.known = true;
     out.lethal = (c >= 254);
     out.risk = static_cast<double>(c) / 252.0;
-    out.clearance = clearance_[idx];
-    out.comfort_clearance = comfort_clearance_.empty() ? out.clearance : comfort_clearance_[idx];
+    out.clearance = clearance[idx];
+    out.comfort_clearance = comfort_clearance.empty() ? out.clearance : comfort_clearance[idx];
     out.cost = out.risk * risk_weight_;
     if (std::isfinite(out.clearance) && out.clearance < clearance_distance_) {
       const double margin = (clearance_distance_ - out.clearance) / std::max(1e-3, clearance_distance_);
       out.cost += clearance_weight_ * margin * margin;
     }
     if (risk_query_mode_ == "se2_yaw" &&
-        map_.exists(se2_risk_layer_) &&
-        map_.hasSO2(se2_risk_layer_))
+        grid.exists(se2_risk_layer_) &&
+        grid.hasSO2(se2_risk_layer_))
     {
       try {
-        const double se2_risk = map_.getValue(
+        const double se2_risk = grid.getValue(
           se2_risk_layer_,
           Eigen::Vector3d(x, y, yaw),
           se2_grid::InterpolationMethods::INTER_NEAREST);
@@ -768,7 +1147,7 @@ private:
         {
           out.risk = std::max(out.risk, std::clamp(se2_risk, 0.0, 1.0));
           out.cost = std::max(out.cost, out.risk * risk_weight_);
-          if (out.risk >= risk_hard_threshold_)
+          if (se2_risk_lethal_ && out.risk >= risk_hard_threshold_)
           {
             out.lethal = true;
             out.cost = mppi_collision_cost_;
@@ -781,6 +1160,30 @@ private:
     }
     if (out.lethal) out.cost = mppi_collision_cost_;
     return out;
+  }
+
+  bool liveObstacleAtLocked(double x, double y) const
+  {
+    const auto live = std::atomic_load(&live_snapshot_);
+    return live && live->occupied(x, y);
+  }
+
+
+  bool livePathAheadUnsafe(const std::vector<Pose2> &path, size_t nearest_idx)
+  {
+    const auto live = std::atomic_load(&live_snapshot_);
+    if (!live || path.empty()) return false;
+    const double start_s = path[nearest_idx].s;
+    const double end_s = std::min(path.back().s, start_s + std::max(3.0, replan_path_remaining_ + 1.2));
+    for (double s = start_s; s <= end_s + 1e-6; s += 0.15) {
+      const Pose2 p = samplePathAt(path, s);
+      const double c = std::cos(p.yaw), sn = std::sin(p.yaw);
+      for (const auto &off : footprintOffsets()) {
+        if (live->occupied(p.x + c * off.x() - sn * off.y(),
+                           p.y + sn * off.x() + c * off.y())) return true;
+      }
+    }
+    return false;
   }
 
   std::array<Eigen::Vector2d, 25> footprintOffsets() const
@@ -826,7 +1229,9 @@ private:
     double yaw,
     double &cost,
     double *min_clearance = nullptr,
-    double *min_comfort_clearance = nullptr) const
+    double *min_comfort_clearance = nullptr,
+    bool allow_fresh_unknown = false,
+    const ControlMapSnapshot *snapshot = nullptr) const
   {
     cost = 0.0;
     double clr = kInf;
@@ -836,7 +1241,7 @@ private:
     for (const auto &off : footprintOffsets()) {
       const double px = x + c * off.x() - s * off.y();
       const double py = y + s * off.x() + c * off.y();
-      const auto q = queryCostLocked(px, py, yaw);
+      const CostQuery q = queryCostLocked(px, py, yaw, allow_fresh_unknown, snapshot);
       if (q.lethal) return false;
       cost = std::max(cost, q.cost);
       clr = std::min(clr, q.clearance);
@@ -849,6 +1254,7 @@ private:
 
   double hardClearanceFloor() const
   {
+    if (hard_clearance_floor_ >= 0.0) return hard_clearance_floor_;
     return std::max(0.24, 0.30 * clearance_distance_);
   }
 
@@ -894,7 +1300,7 @@ private:
         }
       }
 
-      const bool corridor_blocked = (center_bad && lateral_bad >= 4) || lateral_bad >= 5;
+      const bool corridor_blocked = center_bad || lateral_bad >= 5;
       if (corridor_blocked) {
         ++bad_count;
         if (bad_count >= 4) {
@@ -916,6 +1322,7 @@ private:
     std::vector<Pose2> &guide_path)
   {
     if (!guide_search_enable_ || !map_ready_ || width_ <= 0 || height_ <= 0) return false;
+    const auto planning_start = std::chrono::steady_clock::now();
 
     int sx = 0, sy = 0;
     if (!worldToCostCell(odom.x, odom.y, sx, sy)) return false;
@@ -1078,6 +1485,8 @@ private:
     const std::array<int, 8> ny_step = {0, 0, -1, 1, -1, 1, -1, 1};
 
     while (!open.empty() && expansions < guide_max_expansions_) {
+      if (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - planning_start).count()
+          >= std::min(65.0, 0.60 * max_search_time_ms_)) break;
       const int cur_idx = open.top().idx;
       open.pop();
       if (closed[static_cast<size_t>(cur_idx)] != 0) continue;
@@ -1584,7 +1993,67 @@ private:
     return merged;
   }
 
-  bool planPath()
+  void requestPlan(const std::string &reason)
+  {
+    {
+      std::lock_guard<std::mutex> lock(planner_mutex_);
+      planner_reason_ = reason;
+      planner_wakeup_ = true;
+    }
+    plan_requested_.store(true, std::memory_order_release);
+    planner_cv_.notify_one();
+  }
+
+  bool goalSequenceCurrent(uint64_t sequence)
+  {
+    std::lock_guard<std::mutex> lock(goal_mutex_);
+    return have_goal_ && goal_seq_ == sequence;
+  }
+
+  void plannerLoop()
+  {
+    while (true) {
+      std::string reason;
+      {
+        std::unique_lock<std::mutex> lock(planner_mutex_);
+        planner_cv_.wait(lock, [this]() { return planner_stop_ || planner_wakeup_; });
+        if (planner_stop_) return;
+        planner_wakeup_ = false;
+        reason = planner_reason_;
+      }
+
+      if (!haveGoalThreadSafe() || !map_ready_) {
+        plan_requested_.store(false, std::memory_order_release);
+        continue;
+      }
+
+      planner_running_.store(true, std::memory_order_release);
+      const auto start = std::chrono::steady_clock::now();
+      const uint64_t map_seq_before = map_update_seq_.load(std::memory_order_acquire);
+      plan_requested_.store(false, std::memory_order_release);
+      const bool ok = planPath(reason);
+      const double elapsed_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+      last_plan_time_sec_.store(this->now().seconds(), std::memory_order_release);
+      last_plan_elapsed_ms_.store(elapsed_ms, std::memory_order_release);
+      planner_running_.store(false, std::memory_order_release);
+
+      // A map callback may have arrived while planPath held the map mutex. Do
+      // not erase that newer invalidation when the old plan completes.
+      if (map_update_seq_.load(std::memory_order_acquire) == map_seq_before) {
+        map_dirty_.store(false, std::memory_order_release);
+      }
+      if (!ok) plan_requested_.store(true, std::memory_order_release);
+
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "terrain_nav planner: result=%s reason=%s elapsed=%.1fms map_seq=%llu",
+        ok ? "success" : "failed", reason.c_str(), elapsed_ms,
+        static_cast<unsigned long long>(map_update_seq_.load(std::memory_order_acquire)));
+    }
+  }
+
+  bool planPath(const std::string &replan_reason)
   {
     OdomState odom;
     {
@@ -1594,10 +2063,12 @@ private:
     if (!odom.valid) return false;
 
     Pose2 raw_goal_snapshot;
+    uint64_t goal_seq_snapshot = 0;
     {
       std::lock_guard<std::mutex> lock(goal_mutex_);
       if (!have_goal_) return false;
       raw_goal_snapshot = raw_goal_;
+      goal_seq_snapshot = goal_seq_;
     }
 
     std::vector<Pose2> old_path;
@@ -1618,7 +2089,7 @@ private:
     std::vector<Pose2> committed_prefix;
     const bool committed =
       old_have_path &&
-      shouldCommitPreviousPath(last_replan_reason_) &&
+      shouldCommitPreviousPath(replan_reason) &&
       buildCommittedPrefixLocked(odom, old_path, committed_prefix, search_start);
     if (committed) {
       RCLCPP_INFO_THROTTLE(
@@ -1631,6 +2102,74 @@ private:
     if (!worldToCostCell(search_start.x, search_start.y, sx, sy)) {
       RCLCPP_WARN(get_logger(), "Start pose is outside terrain map, skip plan");
       return false;
+    }
+
+    const double reverse_dx = raw_goal_snapshot.x - odom.x;
+    const double reverse_dy = raw_goal_snapshot.y - odom.y;
+    if (reverse_enable_ && std::hypot(reverse_dx, reverse_dy) <= reverse_max_distance_ &&
+        reverse_dx * std::cos(odom.yaw) + reverse_dy * std::sin(odom.yaw) < -0.30) {
+      const auto arc = terrain_nav::reverseArc(odom.x, odom.y, odom.yaw,
+          raw_goal_snapshot.x, raw_goal_snapshot.y, reverse_max_distance_, maxReferenceCurvature());
+      std::vector<Pose2> reverse_path;
+      for (const auto &p : arc) reverse_path.push_back(Pose2{p[0], p[1], wrapAngle(p[2]), 0.0, -1});
+      bool reverse_safe = false;
+      if (reverse_path.size() >= 2) {
+        std::vector<Pose2> diagnostic = reverse_path;
+        updateYawFromTangent(diagnostic);
+        updatePathArcLength(diagnostic);
+        reverse_safe = true;
+        for (double ds = 0.0; ds <= diagnostic.back().s + 1e-6; ds += 0.05) {
+          const Pose2 sample = samplePathAt(diagnostic, std::min(ds, diagnostic.back().s));
+          double fc = 0.0, clearance = kInf, comfort = kInf;
+          if (!footprintCostLocked(sample.x, sample.y, sample.yaw, fc, &clearance, &comfort, true) ||
+              (std::isfinite(clearance) && clearance < hardClearanceFloor())) {
+            reverse_safe = false;
+            break;
+          }
+        }
+      }
+      if (reverse_path.size() < 2 || !reverse_safe) {
+        if (!reverse_path.empty()) {
+          std::vector<Pose2> diagnostic = reverse_path;
+          updateYawFromTangent(diagnostic);
+          updatePathArcLength(diagnostic);
+          for (double ds = 0.0; ds <= diagnostic.back().s + 1e-6; ds += 0.10) {
+            const Pose2 sample = samplePathAt(diagnostic, std::min(ds, diagnostic.back().s));
+            double fc = 0.0, clearance = kInf;
+            if (!footprintCostLocked(sample.x, sample.y, sample.yaw, fc, &clearance, nullptr, true) ||
+                (std::isfinite(clearance) && clearance < hardClearanceFloor())) {
+              RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 1000,
+                "Reverse safety first failure: s=%.2f pos=(%.2f,%.2f) yaw=%.2f cost=%.2f clearance=%.2f floor=%.2f",
+                ds, sample.x, sample.y, sample.yaw, fc, clearance, hardClearanceFloor());
+              break;
+            }
+          }
+        }
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Reverse candidate rejected: arc_points=%zu max_curvature=%.3f safe=%s start=(%.2f,%.2f) goal=(%.2f,%.2f)",
+          reverse_path.size(), maxReferenceCurvature(), reverse_safe ? "yes" : "no",
+          odom.x, odom.y, raw_goal_snapshot.x, raw_goal_snapshot.y);
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                            "Close rear goal has no safe reverse arc; stopping instead of taking a forward detour");
+        return false;
+      }
+      updateYawFromTangent(reverse_path);
+      updatePathArcLength(reverse_path);
+      if (!goalSequenceCurrent(goal_seq_snapshot)) return false;
+      {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        path_ = std::move(reverse_path);
+        active_goal_ = path_.back();
+        have_path_ = true;
+        ++path_seq_;
+      }
+      publishActiveGoal(raw_goal_snapshot, true);
+      publishPath();
+      RCLCPP_INFO(get_logger(), "terrain reverse arc success: close rear goal, distance=%.2fm",
+                  std::hypot(reverse_dx, reverse_dy));
+      return true;
     }
 
     std::vector<Pose2> continuous_path;
@@ -1656,6 +2195,7 @@ private:
         refinePathForTrackingLocked(continuous_path);
       }
       updatePathArcLength(continuous_path);
+      if (!goalSequenceCurrent(goal_seq_snapshot)) return false;
 
       size_t planned_path_size = 0;
       {
@@ -1668,7 +2208,7 @@ private:
         resetNominalControls();
       }
 
-      publishActiveGoal(direct_goal);
+      publishActiveGoal(direct_goal, true);
       publishPath();
       consecutive_path_unsafe_ = 0;
       RCLCPP_INFO(
@@ -1684,7 +2224,7 @@ private:
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Cannot resolve active terrain goal");
       return false;
     }
-    publishActiveGoal(active_goal);
+    publishActiveGoal(active_goal, true);
 
     if (buildContinuousCurvePathLocked(search_start, active_goal, continuous_path)) {
       if (committed) {
@@ -1692,6 +2232,7 @@ private:
         refinePathForTrackingLocked(continuous_path);
       }
       updatePathArcLength(continuous_path);
+      if (!goalSequenceCurrent(goal_seq_snapshot)) return false;
 
       size_t planned_path_size = 0;
       {
@@ -1765,8 +2306,12 @@ private:
 
     int goal_node = -1;
     int best_frontier = 0;
-    double best_frontier_h = start.f;
+    double best_frontier_score = kInf;
     int iterations = 0;
+    int reject_primitive = 0;
+    int reject_outside = 0;
+    int reject_progress = 0;
+    int reject_duplicate = 0;
     const auto steers = steerSamples();
 
     while (!open.empty()) {
@@ -1776,9 +2321,17 @@ private:
       ++iterations;
 
       const double h = heuristic(cur.x, cur.y, cur.yaw, active_goal);
-      if (h < best_frontier_h) {
-        best_frontier_h = h;
-        best_frontier = idx;
+      if (cur.length >= 1.0) {
+        double frontier_score = h;
+        if (use_guide_tail) {
+          double guide_yaw = cur.yaw;
+          const double guide_dist = distanceToPath2D(guide_tail, cur.x, cur.y, &guide_yaw);
+          frontier_score += 3.5 * guide_dist + 0.55 * std::abs(wrapAngle(cur.yaw - guide_yaw));
+        }
+        if (frontier_score < best_frontier_score) {
+          best_frontier_score = frontier_score;
+          best_frontier = idx;
+        }
       }
 
       const double goal_dist = std::hypot(cur.x - active_goal.x, cur.y - active_goal.y);
@@ -1795,9 +2348,15 @@ private:
 
       for (double steer : steers) {
         const auto prim = propagatePrimitiveLocked(cur, steer);
-        if (!prim.ok) continue;
+        if (!prim.ok) {
+          ++reject_primitive;
+          continue;
+        }
         int ix = 0, iy = 0;
-        if (!worldToCostCell(prim.end.x, prim.end.y, ix, iy)) continue;
+        if (!worldToCostCell(prim.end.x, prim.end.y, ix, iy)) {
+          ++reject_outside;
+          continue;
+        }
         const double cur_progress = progressAlongGoal(cur.x, cur.y);
         const double next_progress = progressAlongGoal(prim.end.x, prim.end.y);
         double guide_dist = std::abs(lateralToGoalRay(prim.end.x, prim.end.y));
@@ -1809,7 +2368,10 @@ private:
         }
         const double delta_progress = next_progress - cur_progress;
         const double next_length = cur.length + primitive_length_;
-        if (use_progress_guard && next_length > max_tail_length) continue;
+        if (use_progress_guard && next_length > max_tail_length) {
+          ++reject_progress;
+          continue;
+        }
         const int yaw_bin = yawToBin(prim.end.yaw);
         const int64_t key = keyFor(ix, iy, yaw_bin);
         const double steer_norm = std::abs(steer) / std::max(1e-3, max_steer_);
@@ -1833,7 +2395,10 @@ private:
           goal_heading_weight_ * heading_gap * heading_gap * primitive_length_;
         const double ng = cur.g + edge_cost;
         auto it = best_g.find(key);
-        if (it != best_g.end() && it->second <= ng) continue;
+        if (it != best_g.end() && it->second <= ng) {
+          ++reject_duplicate;
+          continue;
+        }
 
         SearchNode next;
         next.x = prim.end.x;
@@ -1859,15 +2424,20 @@ private:
     if (chosen < 0 && accept_partial_progress_) {
       const double progress = std::hypot(nodes[static_cast<size_t>(best_frontier)].x - search_start.x,
                                          nodes[static_cast<size_t>(best_frontier)].y - search_start.y);
-      if (progress > 1.5) {
+      if (progress > 1.0) {
         chosen = best_frontier;
         partial = true;
       }
     }
     if (chosen < 0) {
+      const auto &frontier = nodes[static_cast<size_t>(best_frontier)];
+      const double frontier_dist = std::hypot(frontier.x - search_start.x, frontier.y - search_start.y);
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 800,
-                           "terrain lattice failed: iter=%d nodes=%zu goal=(%.2f, %.2f)",
-                           iterations, nodes.size(), active_goal.x, active_goal.y);
+                           "terrain lattice failed: iter=%d nodes=%zu frontier=(%.2f, %.2f) dist=%.2f goal=(%.2f, %.2f) reject primitive/outside/progress/duplicate=%d/%d/%d/%d se2_lethal=%s",
+                           iterations, nodes.size(), frontier.x, frontier.y, frontier_dist,
+                           active_goal.x, active_goal.y,
+                           reject_primitive, reject_outside, reject_progress, reject_duplicate,
+                           se2_risk_lethal_ ? "true" : "false");
       return false;
     }
 
@@ -1878,16 +2448,23 @@ private:
     refinePathForTrackingLocked(path);
     updatePathArcLength(path);
     if (!latticePathReasonableLocked(path, search_start, active_goal, partial)) {
+      const double direct = std::hypot(active_goal.x - search_start.x, active_goal.y - search_start.y);
+      const double progress = direct > 1e-3
+        ? ((path.back().x - search_start.x) * (active_goal.x - search_start.x) +
+           (path.back().y - search_start.y) * (active_goal.y - search_start.y)) / direct
+        : 0.0;
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 800,
-        "terrain lattice rejected unreasonable %s path: pts=%zu goal=(%.2f, %.2f)",
-        partial ? "partial" : "complete", path.size(), active_goal.x, active_goal.y);
+        "terrain lattice rejected unreasonable %s path: pts=%zu length=%.2f progress=%.2f end=(%.2f, %.2f) goal=(%.2f, %.2f)",
+        partial ? "partial" : "complete", path.size(), path.back().s, progress,
+        path.back().x, path.back().y, active_goal.x, active_goal.y);
       return false;
     }
 
     size_t planned_path_size = 0;
     {
       std::lock_guard<std::mutex> lock(path_mutex_);
+      if (!goalSequenceCurrent(goal_seq_snapshot)) return false;
       path_ = std::move(path);
       active_goal_ = active_goal;
       have_path_ = path_.size() >= 2;
@@ -1960,7 +2537,7 @@ private:
       const double dx = path[i + 1].x - path[i].x;
       const double dy = path[i + 1].y - path[i].y;
       if (std::hypot(dx, dy) > 1e-4) {
-        path[i].yaw = std::atan2(dy, dx);
+        path[i].yaw = wrapAngle(std::atan2(dy, dx) + (path[i].direction < 0 ? M_PI : 0.0));
       }
     }
     path.back().yaw = path[path.size() - 2].yaw;
@@ -2031,7 +2608,7 @@ private:
       const double ux = (goal.x - start.x) / direct;
       const double uy = (goal.y - start.y) / direct;
       const double end_progress = (path.back().x - start.x) * ux + (path.back().y - start.y) * uy;
-      if (partial && end_progress < std::max(1.15, 0.32 * std::min(direct, local_goal_distance_))) {
+      if (partial && end_progress < std::max(0.90, 0.15 * std::min(direct, local_goal_distance_))) {
         return false;
       }
 
@@ -2462,6 +3039,65 @@ private:
     return pathFootprintSafeLocked(best_path, 0.14) && pathKinematicallyFeasible(best_path);
   }
 
+  bool buildArcDirectPathLocked(
+    const Pose2 &start,
+    const Pose2 &goal,
+    std::vector<Pose2> &best_path) const
+  {
+    best_path.clear();
+
+    const double dx = goal.x - start.x;
+    const double dy = goal.y - start.y;
+    const double direct_dist = std::hypot(dx, dy);
+    if (direct_dist < 0.45 || direct_dist > local_goal_distance_ + 0.8) return false;
+
+    const double c = std::cos(start.yaw);
+    const double s = std::sin(start.yaw);
+    const double local_x = c * dx + s * dy;
+    const double local_y = -s * dx + c * dy;
+    if (local_x < 0.35) return false;
+
+    const double denom = local_x * local_x + local_y * local_y;
+    if (denom < 1e-6) return false;
+    const double curvature = 2.0 * local_y / denom;
+    const double max_curvature = maxReferenceCurvature();
+    if (std::abs(curvature) > max_curvature + 1e-6) return false;
+
+    const double heading_change = 2.0 * std::atan2(local_y, local_x);
+    const double arc_length = (std::abs(curvature) > 1e-5)
+      ? std::abs(heading_change / curvature)
+      : direct_dist;
+    if (arc_length > direct_dist * direct_curve_max_length_ratio_ + 0.40) return false;
+
+    const int samples = std::max(8, static_cast<int>(std::ceil(arc_length / 0.14)));
+    best_path.reserve(static_cast<size_t>(samples) + 1);
+    for (int i = 0; i <= samples; ++i) {
+      const double u = static_cast<double>(i) / static_cast<double>(samples);
+      const double ds = arc_length * u;
+      double lx = ds;
+      double ly = 0.0;
+      double yaw = start.yaw;
+      if (std::abs(curvature) > 1e-5) {
+        const double th = curvature * ds;
+        lx = std::sin(th) / curvature;
+        ly = (1.0 - std::cos(th)) / curvature;
+        yaw = wrapAngle(start.yaw + th);
+      }
+      const double wx = start.x + c * lx - s * ly;
+      const double wy = start.y + s * lx + c * ly;
+      best_path.push_back(Pose2{wx, wy, yaw, 0.0});
+    }
+    best_path.front() = start;
+    best_path.back().x = goal.x;
+    best_path.back().y = goal.y;
+    updateYawFromTangent(best_path);
+    updatePathArcLength(best_path);
+
+    double score = kInf;
+    const double goal_dir = std::atan2(dy, dx);
+    return evaluateContinuousCurveLocked(best_path, start, goal, direct_dist, goal_dir, score);
+  }
+
   bool buildContinuousCurvePathLocked(
     const Pose2 &start,
     const Pose2 &goal,
@@ -2469,6 +3105,7 @@ private:
   {
     best_path.clear();
     if (!direct_curve_enable_) return false;
+    if (buildArcDirectPathLocked(start, goal, best_path)) return true;
     if (buildDubinsDirectPathLocked(start, goal, best_path)) return true;
     return buildFrenetDirectPathLocked(start, goal, best_path);
   }
@@ -2881,6 +3518,7 @@ private:
     out.y = a.y + u * (b.y - a.y);
     out.yaw = wrapAngle(a.yaw + u * wrapAngle(b.yaw - a.yaw));
     out.s = s;
+    out.direction = a.direction;
     return out;
   }
 
@@ -2906,14 +3544,11 @@ private:
     const double now_sec = this->now().seconds();
     if (!haveGoalThreadSafe()) return false;
     if (!map_ready_) return false;
-    if (last_plan_time_sec_ >= 0.0 && (now_sec - last_plan_time_sec_) < replan_min_interval_) {
-      std::lock_guard<std::mutex> lock(path_mutex_);
-      if (have_path_ && path_.size() >= 2) return false;
-    }
-    if (plan_requested_) {
-      last_replan_reason_ = "new goal or previous plan failed";
-      return true;
-    }
+    // The planner owns the map lock while searching. Keep the control loop
+    // independent of that search and let it validate the new path next tick.
+    if (planner_running_.load(std::memory_order_acquire)) return false;
+    const double last_plan = last_plan_time_sec_.load(std::memory_order_acquire);
+    const bool recently_planned = last_plan >= 0.0 && (now_sec - last_plan) < replan_min_interval_;
 
     std::vector<Pose2> path;
     Pose2 goal;
@@ -2925,6 +3560,7 @@ private:
       goal = active_goal_;
     }
     if (!have_path || path.size() < 2) {
+      if (recently_planned) return false;
       last_replan_reason_ = "no valid path";
       return true;
     }
@@ -2936,7 +3572,8 @@ private:
       return true;
     }
     const double remaining = std::max(0.0, path.back().s - path[nearest].s);
-    if (remaining < replan_path_remaining_) {
+    if (remaining < (path.front().direction < 0 ? 0.20 : replan_path_remaining_)) {
+      if (recently_planned) return false;
       last_replan_reason_ = "path almost consumed";
       return true;
     }
@@ -2952,6 +3589,14 @@ private:
         consecutive_path_unsafe_ = 0;
       }
       map_dirty_ = false;
+    }
+
+    if (recently_planned) {
+      return false;
+    }
+    if (plan_requested_.load(std::memory_order_acquire)) {
+      last_replan_reason_ = "new goal or previous plan failed";
+      return true;
     }
 
     Pose2 raw;
@@ -2974,8 +3619,8 @@ private:
 
   bool pathAheadUnsafe(const std::vector<Pose2> &path, size_t nearest_idx)
   {
-    std::lock_guard<std::mutex> lock(map_mutex_);
-    if (!map_ready_ || path.empty()) return false;
+    const auto snapshot = std::atomic_load(&control_map_snapshot_);
+    if (!snapshot || path.empty()) return false;
     const double start_s = path[nearest_idx].s;
     const double end_s = std::min(path.back().s, start_s + std::max(1.5, replan_path_remaining_ + 1.2));
     int severe_samples = 0;
@@ -2984,7 +3629,7 @@ private:
       const Pose2 p = samplePathAt(path, s);
       double fc = 0.0;
       double clearance = kInf;
-      if (!footprintCostLocked(p.x, p.y, p.yaw, fc, &clearance)) {
+      if (!footprintCostLocked(p.x, p.y, p.yaw, fc, &clearance, nullptr, false, snapshot.get())) {
         return true;
       }
       if (std::isfinite(clearance) && clearance < hardClearanceFloor()) {
@@ -3016,6 +3661,7 @@ private:
     if (reason == "no valid path") {
       return true;
     }
+    if (reason == "updated terrain map invalidated path ahead") return true;
     if (track_dist > std::max(0.85, 1.45 * replan_track_error_)) return true;
     if (heading_gap > 1.35) return true;
     if (remaining < std::max(0.35, 0.25 * replan_path_remaining_)) return true;
@@ -3026,6 +3672,45 @@ private:
   {
     std::lock_guard<std::mutex> lock(goal_mutex_);
     return have_goal_;
+  }
+
+  bool rawGoalReachedThreadSafe(const OdomState &odom, double *dist_out = nullptr)
+  {
+    std::lock_guard<std::mutex> lock(goal_mutex_);
+    if (!have_goal_) return false;
+    const double dist = std::hypot(raw_goal_.x - odom.x, raw_goal_.y - odom.y);
+    if (dist_out) *dist_out = dist;
+    return dist <= goal_reached_distance_;
+  }
+
+  void clearGoalAndPath()
+  {
+    {
+      std::lock_guard<std::mutex> lock(goal_mutex_);
+      have_goal_ = false;
+      plan_requested_ = false;
+    }
+    {
+      std::lock_guard<std::mutex> lock(path_mutex_);
+      path_.clear();
+      have_path_ = false;
+    }
+    resetNominalControls();
+
+    // Clear the latched goal and the old path immediately.  Otherwise RViz
+    // can keep showing a completed command while the controller is already
+    // idle, which is especially confusing during repeated goal tests.
+    nav_msgs::msg::Path empty_path;
+    empty_path.header.stamp = now();
+    empty_path.header.frame_id = frame_id_;
+    path_pub_->publish(empty_path);
+    publishReferenceMarkers({});
+    visualization_msgs::msg::MarkerArray clear_goal;
+    visualization_msgs::msg::Marker clear;
+    clear.action = visualization_msgs::msg::Marker::DELETEALL;
+    clear_goal.markers.push_back(clear);
+    goal_marker_pub_->publish(clear_goal);
+    legacy_goal_marker_pub_->publish(clear_goal);
   }
 
   void predictOdomForControl(OdomState &odom) const
@@ -3047,8 +3732,65 @@ private:
     odom.yaw = wrapAngle(odom.yaw + odom.yaw_rate * dt);
   }
 
+  bool stopIfStuck(const OdomState &odom)
+  {
+    uint64_t goal_seq = 0;
+    bool have_goal = false;
+    {
+      std::lock_guard<std::mutex> lock(goal_mutex_);
+      goal_seq = goal_seq_;
+      have_goal = have_goal_;
+    }
+    if (!have_goal || goal_seq != stuck_goal_seq_) {
+      stuck_goal_seq_ = goal_seq;
+      stuck_since_sec_ = 0.0;
+      stuck_latched_ = false;
+    }
+    if (!have_goal) return false;
+    if (stuck_latched_) {
+      publishImmediateStop();
+      return true;
+    }
+    if (std::abs(last_cmd_v_) < stuck_command_mps_) {
+      stuck_since_sec_ = 0.0;
+      return false;
+    }
+    const double t = now().seconds();
+    const double progress = std::hypot(odom.x - stuck_start_x_, odom.y - stuck_start_y_);
+    if (stuck_since_sec_ <= 0.0 || progress >= stuck_progress_m_) {
+      stuck_since_sec_ = t;
+      stuck_start_x_ = odom.x;
+      stuck_start_y_ = odom.y;
+      return false;
+    }
+    if (t - stuck_since_sec_ < stuck_timeout_sec_) return false;
+    stuck_latched_ = true;
+    RCLCPP_ERROR(
+      get_logger(),
+      "terrain_nav stopped: commanded %.2f m/s but moved only %.2f m in %.1f s; send a new goal after checking the obstruction",
+      last_cmd_v_, progress, stuck_timeout_sec_);
+    publishImmediateStop();
+    return true;
+  }
+
   void controlTimer()
   {
+    const auto control_start = std::chrono::steady_clock::now();
+    if (live_obstacle_enable_) {
+      const auto live = std::atomic_load(&live_snapshot_);
+      if (live) {
+        const double live_age = now().seconds() - live->stamp_sec;
+        if (live_age > live_obstacle_max_age_sec_) {
+          requestPlan("stale live cloud");
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "terrain_nav stops on stale live cloud: age=%.2fs",
+            live_age);
+          publishImmediateStop();
+          return;
+        }
+      }
+    }
     OdomState odom;
     {
       std::lock_guard<std::mutex> lock(odom_mutex_);
@@ -3066,11 +3808,64 @@ private:
       return;
     }
 
+    if (haveGoalThreadSafe()) {
+      const double now_sec = this->now().seconds();
+      const double odom_age = now_sec - odom.stamp.seconds();
+      const auto map = std::atomic_load(&control_map_snapshot_);
+      const double map_age = map ? now_sec - map->stamp.seconds() : 0.0;
+      if ((odom_age > max_odom_age_sec_ && odom_age >= 0.0) ||
+          (map_ready_ && map_age > max_map_age_sec_ && map_age >= 0.0)) {
+        requestPlan("stale odometry or map");
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "terrain_nav stops on stale input: odom_age=%.2fs map_age=%.2fs", odom_age, map_age);
+        publishImmediateStop();
+        return;
+      }
+    }
+
+    double raw_goal_dist = 0.0;
+    if (rawGoalReachedThreadSafe(odom, &raw_goal_dist)) {
+      clearGoalAndPath();
+      RCLCPP_INFO(
+        get_logger(),
+        "terrain_nav reached raw goal: dist=%.2f <= %.2f, clearing goal and stopping",
+        raw_goal_dist, goal_reached_distance_);
+      publishStop();
+      return;
+    }
+
+    if (stopIfStuck(odom)) return;
+
     if (haveGoalThreadSafe() && !map_ready_) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "terrain_nav received a goal but is waiting for fused terrain map on %s",
         fused_map_topic_.c_str());
+    }
+
+    if (live_dirty_.exchange(false) && haveGoalThreadSafe()) {
+      std::vector<Pose2> current_path;
+      {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        if (have_path_) current_path = path_;
+      }
+      if (current_path.size() >= 2) {
+        const size_t nearest = nearestPathIndex(current_path, odom.x, odom.y);
+        if (livePathAheadUnsafe(current_path, nearest)) {
+          {
+            std::lock_guard<std::mutex> lock(path_mutex_);
+            path_.clear();
+            have_path_ = false;
+          }
+          requestPlan("new live obstacle");
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 800,
+            "terrain_nav emergency stop: new live obstacle intersects the path ahead");
+          publishImmediateStop();
+          return;
+        }
+      }
     }
 
     if (needReplan(odom)) {
@@ -3079,33 +3874,12 @@ private:
         "terrain_nav replanning: %s",
         last_replan_reason_.c_str());
       const std::string replan_reason = last_replan_reason_;
-      const bool ok = planPath();
-      last_plan_time_sec_ = this->now().seconds();
-      plan_requested_ = !ok;
-      map_dirty_ = false;
-      if (!ok) {
-        std::vector<Pose2> path_after_fail;
-        {
-          std::lock_guard<std::mutex> lock(path_mutex_);
-          path_after_fail = path_;
-        }
-        if (shouldDropPathAfterPlanFailure(path_after_fail, odom, replan_reason)) {
-          {
-            std::lock_guard<std::mutex> lock(path_mutex_);
-            path_.clear();
-            have_path_ = false;
-          }
-          RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 900,
-            "terrain_nav stops after failed replan from unstable old path: reason=%s",
-            replan_reason.c_str());
-          publishStop();
-          return;
-        }
-        RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1200,
-          "terrain_nav keeps previous path after failed replan: reason=%s",
-          replan_reason.c_str());
+      requestPlan(replan_reason);
+      if (replan_reason == "updated terrain map invalidated path ahead") {
+        // A path rejected by the new costmap is no longer safe to track. The
+        // worker will replace it without blocking this fast safety cycle.
+        publishImmediateStop();
+        return;
       }
     }
 
@@ -3123,13 +3897,43 @@ private:
 
     double track_dist = 0.0;
     const size_t nearest = nearestPathIndex(path, odom.x, odom.y, &track_dist);
-    geometry_msgs::msg::Twist cmd = use_mppi_ ? computeMppiCommand(odom, path) : computePurePursuitCommand(odom, path);
+    if (live_obstacle_enable_ && livePathAheadUnsafe(path, nearest)) {
+      {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        path_.clear();
+        have_path_ = false;
+      }
+      requestPlan("new live obstacle");
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 800,
+        "terrain_nav emergency stop: live obstacle intersects newly planned path");
+      publishImmediateStop();
+      return;
+    }
+    // Planning is bounded but still consumes time. Track from the newest pose.
+    {
+      std::lock_guard<std::mutex> lock(odom_mutex_);
+      odom = odom_;
+    }
+    if (now().seconds() - odom.stamp.seconds() > max_odom_age_sec_) {
+      publishImmediateStop();
+      return;
+    }
+    predictOdomForControl(odom);
+    geometry_msgs::msg::Twist cmd = use_mppi_ && path.front().direction > 0
+      ? computeMppiCommand(odom, path) : computePurePursuitCommand(odom, path);
     const double remaining = std::max(0.0, path.back().s - path[nearest].s);
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1500,
       "terrain_nav tracking: err=%.2f rem=%.2f cmd_v=%.2f cmd_steer=%.2f odom_v=%.2f path_pts=%zu",
       track_dist, remaining, cmd.linear.x, cmd.angular.z, odom.v, path.size());
     limitAndPublish(cmd);
+    const double control_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - control_start).count();
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 3000,
+      "terrain_nav control timing: %.2fms period=%.1fms planner_last=%.1fms",
+      control_ms, 1000.0 * control_period_, last_plan_elapsed_ms_.load(std::memory_order_acquire));
   }
 
   geometry_msgs::msg::Twist computePurePursuitCommand(const OdomState &odom, const std::vector<Pose2> &path)
@@ -3150,7 +3954,8 @@ private:
     const double ey = odom.y - nearest_pose.y;
     const double signed_lateral = -std::sin(nearest_pose.yaw) * ex + std::cos(nearest_pose.yaw) * ey;
     const double heading_error = wrapAngle(nearest_pose.yaw - odom.yaw);
-    const double stanley_steer = heading_error +
+    const int direction = path.front().direction;
+    const double stanley_steer = direction * heading_error +
       std::atan2(-stanley_gain_ * signed_lateral, std::abs(odom.v) + stanley_softening_);
     const double steer =
       pure_pursuit_weight_ * pure_steer + (1.0 - pure_pursuit_weight_) * stanley_steer;
@@ -3165,6 +3970,7 @@ private:
       cmd.linear.x = std::max(cmd.linear.x, min_tracking_speed_ * terrain_scale);
     }
     cmd.angular.z = clampAbs(steer, max_steer_);
+    if (direction < 0) cmd.linear.x = -std::min(reverse_max_speed_, std::abs(cmd.linear.x));
     return cmd;
   }
 
@@ -3175,7 +3981,8 @@ private:
     return std::clamp(remaining / goal_slowdown_distance_, 0.28, 1.0);
   }
 
-  double terrainSpeedScaleLocked(double x, double y, double yaw) const
+  double terrainSpeedScaleLocked(
+    double x, double y, double yaw, const ControlMapSnapshot *snapshot = nullptr) const
   {
     if (!terrain_speed_enable_ || !map_ready_) return 1.0;
 
@@ -3187,7 +3994,7 @@ private:
     for (const auto &off : footprintOffsets()) {
       const double px = x + c * off.x() - s * off.y();
       const double py = y + s * off.x() + c * off.y();
-      const auto q = queryCostLocked(px, py, yaw);
+      const auto q = queryCostLocked(px, py, yaw, false, snapshot);
       if (!q.known) continue;
       any_known = true;
       max_risk = std::max(max_risk, q.risk);
@@ -3206,8 +4013,9 @@ private:
 
   double terrainSpeedScale(double x, double y, double yaw) const
   {
-    std::lock_guard<std::mutex> lock(map_mutex_);
-    return terrainSpeedScaleLocked(x, y, yaw);
+    const auto snapshot = std::atomic_load(&control_map_snapshot_);
+    if (!snapshot) return terrain_speed_min_scale_;
+    return terrainSpeedScaleLocked(x, y, yaw, snapshot.get());
   }
 
   geometry_msgs::msg::Twist computeMppiCommand(const OdomState &odom, const std::vector<Pose2> &path)
@@ -3282,7 +4090,8 @@ private:
     const std::vector<double> &v_seq,
     const std::vector<double> &steer_seq)
   {
-    std::lock_guard<std::mutex> map_lock(map_mutex_);
+    const auto snapshot = std::atomic_load(&control_map_snapshot_);
+    if (!snapshot) return mppi_collision_cost_;
     double x = odom.x;
     double y = odom.y;
     double yaw = odom.yaw;
@@ -3300,7 +4109,7 @@ private:
       traveled += std::max(0.0, v) * mppi_dt_;
       const double remaining = std::max(0.0, path.back().s - current_s - traveled);
       const double target_speed = desired_speed_ * speedScaleForRemaining(remaining) *
-        terrainSpeedScaleLocked(x, y, yaw);
+        terrainSpeedScaleLocked(x, y, yaw, snapshot.get());
 
       const double target_s = std::min(path.back().s, current_s + traveled + mppi_lookahead_base_ + mppi_lookahead_time_ * v);
       const Pose2 target = samplePathAt(path, target_s);
@@ -3313,7 +4122,7 @@ private:
 
       double fc = 0.0;
       double clearance = 0.0;
-      if (!footprintCostLocked(x, y, yaw, fc, &clearance)) {
+      if (!footprintCostLocked(x, y, yaw, fc, &clearance, nullptr, false, snapshot.get())) {
         cost += mppi_collision_cost_;
         break;
       }
@@ -3341,7 +4150,7 @@ private:
   {
     const double t = now().seconds();
     const double dt = (last_cmd_time_sec_ > 0.0) ? std::clamp(t - last_cmd_time_sec_, 0.005, 0.15) : control_period_;
-    cmd.linear.x = std::clamp(cmd.linear.x, min_speed_, max_speed_);
+    cmd.linear.x = std::clamp(cmd.linear.x, reverse_enable_ ? -reverse_max_speed_ : min_speed_, max_speed_);
     cmd.angular.z *= steer_output_sign_;
     cmd.angular.z = clampAbs(cmd.angular.z, max_steer_);
     cmd.linear.x = std::clamp(cmd.linear.x, last_cmd_v_ - max_accel_ * dt, last_cmd_v_ + max_accel_ * dt);
@@ -3363,10 +4172,35 @@ private:
     limitAndPublish(cmd);
   }
 
+  void publishImmediateStop()
+  {
+    cmd_pub_->publish(geometry_msgs::msg::Twist{});
+    last_cmd_v_ = 0.0;
+    last_cmd_steer_ = 0.0;
+    last_cmd_time_sec_ = now().seconds();
+  }
+
   void resetNominalControls()
   {
     nominal_v_.assign(static_cast<size_t>(mppi_steps_), desired_speed_);
     nominal_steer_.assign(static_cast<size_t>(mppi_steps_), last_cmd_steer_);
+  }
+
+  double visualizationTerrainZLocked(double x, double y, double fallback) const
+  {
+    // Path publication is called by plan() while map_mutex_ is held.
+    if (!map_ready_) return fallback;
+    for (const auto & layer : {std::string("bgk_mean"), std::string("elevation")}) {
+      if (!map_.exists(layer)) continue;
+      try {
+        const double z = map_.getValue(
+          layer, Eigen::Vector3d(x, y, 0.0), se2_grid::InterpolationMethods::INTER_LINEAR);
+        if (std::isfinite(z)) return z;
+      } catch (...) {
+        // A visualization sample must never interrupt the control loop.
+      }
+    }
+    return fallback;
   }
 
   void publishPath()
@@ -3376,7 +4210,14 @@ private:
       std::lock_guard<std::mutex> lock(path_mutex_);
       path = path_;
     }
-    if (path.empty()) return;
+    if (path.empty()) {
+      nav_msgs::msg::Path empty;
+      empty.header.stamp = now();
+      empty.header.frame_id = frame_id_;
+      path_pub_->publish(empty);
+      publishReferenceMarkers(path);
+      return;
+    }
 
     nav_msgs::msg::Path msg;
     msg.header.stamp = now();
@@ -3387,7 +4228,7 @@ private:
       pose.header = msg.header;
       pose.pose.position.x = p.x;
       pose.pose.position.y = p.y;
-      pose.pose.position.z = 0.10;
+      pose.pose.position.z = visualizationTerrainZLocked(p.x, p.y, 0.0) + 0.12;
       tf2::Quaternion q;
       q.setRPY(0.0, 0.0, p.yaw);
       pose.pose.orientation = tf2::toMsg(q);
@@ -3422,20 +4263,30 @@ private:
         geometry_msgs::msg::Point pt;
         pt.x = p.x;
         pt.y = p.y;
-        pt.z = 0.18;
+        pt.z = visualizationTerrainZLocked(p.x, p.y, 0.0) + 0.16;
         m.points.push_back(pt);
       }
       return m;
     };
 
-    arr.markers.push_back(make_line(0, 0.22, 0.0, 0.95, 1.0, 0.55));
-    arr.markers.push_back(make_line(1, 0.105, 1.0, 0.14, 0.70, 0.90));
+    if (!path.empty()) {
+      arr.markers.push_back(make_line(0, 0.14, 0.12, 0.92, 0.98, 0.55));
+      arr.markers.push_back(make_line(1, 0.055, 0.95, 0.76, 0.22, 0.95));
+    }
     ref_pub_->publish(arr);
     guidance_pub_->publish(arr);
   }
 
-  void publishActiveGoal(const Pose2 &goal)
+  void publishActiveGoal(const Pose2 &goal, bool map_locked = false)
   {
+    double terrain_z = 0.0;
+    if (map_locked) {
+      terrain_z = visualizationTerrainZLocked(goal.x, goal.y, 0.0);
+    } else {
+      std::lock_guard<std::mutex> lock(map_mutex_);
+      terrain_z = visualizationTerrainZLocked(goal.x, goal.y, 0.0);
+    }
+
     visualization_msgs::msg::MarkerArray arr;
     visualization_msgs::msg::Marker clear;
     clear.action = visualization_msgs::msg::Marker::DELETEALL;
@@ -3450,15 +4301,15 @@ private:
     sphere.action = visualization_msgs::msg::Marker::ADD;
     sphere.pose.position.x = goal.x;
     sphere.pose.position.y = goal.y;
-    sphere.pose.position.z = 0.25;
+    sphere.pose.position.z = terrain_z + 0.16;
     sphere.pose.orientation.w = 1.0;
-    sphere.scale.x = 0.35;
-    sphere.scale.y = 0.35;
-    sphere.scale.z = 0.35;
-    sphere.color.r = 0.85f;
-    sphere.color.g = 0.35f;
-    sphere.color.b = 1.0f;
-    sphere.color.a = 0.85f;
+    sphere.scale.x = 0.28;
+    sphere.scale.y = 0.28;
+    sphere.scale.z = 0.18;
+    sphere.color.r = 1.0f;
+    sphere.color.g = 0.72f;
+    sphere.color.b = 0.18f;
+    sphere.color.a = 0.78f;
     arr.markers.push_back(sphere);
 
     visualization_msgs::msg::Marker arrow;
@@ -3469,16 +4320,16 @@ private:
     arrow.action = visualization_msgs::msg::Marker::ADD;
     arrow.pose.position.x = goal.x;
     arrow.pose.position.y = goal.y;
-    arrow.pose.position.z = 0.28;
+    arrow.pose.position.z = terrain_z + 0.20;
     tf2::Quaternion q;
     q.setRPY(0.0, 0.0, goal.yaw);
     arrow.pose.orientation = tf2::toMsg(q);
     arrow.scale.x = 0.70;
     arrow.scale.y = 0.08;
     arrow.scale.z = 0.08;
-    arrow.color.r = 0.0f;
-    arrow.color.g = 0.95f;
-    arrow.color.b = 1.0f;
+    arrow.color.r = 1.0f;
+    arrow.color.g = 0.86f;
+    arrow.color.b = 0.25f;
     arrow.color.a = 0.90f;
     arr.markers.push_back(arrow);
 
@@ -3490,6 +4341,14 @@ private:
   std::string fused_map_topic_;
   std::string cmd_topic_;
   std::string frame_id_;
+  bool live_obstacle_enable_ = false;
+  std::string live_cloud_topic_ = "/cloud_registered";
+  double live_obstacle_min_height_ = 0.38;
+  double live_obstacle_neighbor_radius_ = 0.75;
+  int live_obstacle_min_hits_ = 3;
+  double live_obstacle_max_age_sec_ = 0.60;
+  double live_obstacle_hold_sec_ = 1.20;
+  double live_obstacle_inflation_radius_ = 0.45;
 
   double wheel_base_ = 0.549;
   double max_steer_ = 0.5236;
@@ -3512,6 +4371,7 @@ private:
   double max_search_time_ms_ = 150.0;
   int max_iterations_ = 26000;
   double goal_tolerance_ = 0.42;
+  double goal_reached_distance_ = 0.55;
   double goal_yaw_tolerance_ = 0.95;
   double local_goal_distance_ = 8.0;
   double local_goal_bearing_limit_ = 1.20;
@@ -3537,11 +4397,20 @@ private:
   std::string risk_query_mode_ = "flat_2d";
   std::string se2_risk_layer_ = "risk";
   std::string hard_risk_layer_ = "baseline_risk";
+  bool se2_risk_lethal_ = false;
   double unknown_cost_ = 60.0;
   bool allow_unknown_ = true;
+  double unknown_robot_bubble_radius_ = 0.0;
+  double unknown_robot_bubble_max_baseline_ = 0.0;
+  double max_odom_age_sec_ = 0.5;
+  double max_map_age_sec_ = 1.0;
+  double stuck_timeout_sec_ = 4.0;
+  double stuck_progress_m_ = 0.12;
+  double stuck_command_mps_ = 0.25;
   double risk_weight_ = 3.0;
   double clearance_distance_ = 0.85;
   double clearance_weight_ = 2.8;
+  double hard_clearance_floor_ = -1.0;
   double comfort_clearance_distance_ = 1.35;
   double comfort_clearance_weight_ = 2.2;
   double comfort_clearance_risk_threshold_ = 0.18;
@@ -3609,22 +4478,31 @@ private:
   double path_commit_max_track_error_ = 0.55;
 
   rclcpp::Subscription<se2_grid_msgs::msg::SE2Grid>::SharedPtr map_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr legacy_goal_sub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr live_obstacle_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr ref_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr guidance_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr goal_marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr legacy_goal_marker_pub_;
   rclcpp::TimerBase::SharedPtr control_timer_;
+  rclcpp::CallbackGroup::SharedPtr map_group_;
+  rclcpp::CallbackGroup::SharedPtr odom_group_;
+  rclcpp::CallbackGroup::SharedPtr live_group_;
+  rclcpp::CallbackGroup::SharedPtr control_group_;
 
   mutable std::mutex map_mutex_;
   se2_grid::SE2Grid map_;
+  std::shared_ptr<const ControlMapSnapshot> control_map_snapshot_;
+  std::shared_ptr<const LiveObstacleSnapshot> live_snapshot_;
   std::atomic_bool map_ready_{false};
   std::atomic_bool map_dirty_{false};
-  int consecutive_path_unsafe_ = 0;
+  std::atomic<uint64_t> map_update_seq_{0};
+  std::atomic_int consecutive_path_unsafe_{0};
   std::atomic_bool logged_map_ready_{false};
   rclcpp::Time map_stamp_;
   double min_x_ = 0.0;
@@ -3636,8 +4514,18 @@ private:
   int height_ = 0;
   std::vector<uint8_t> costs_;
   std::vector<uint8_t> hard_;
+  std::vector<float> unknown_baseline_;
   std::vector<float> clearance_;
   std::vector<float> comfort_clearance_;
+  std::vector<uint8_t> live_hard_;
+  std::vector<double> live_expiry_;
+  std::vector<uint8_t> live_free_scans_;
+  std::atomic_bool live_dirty_{false};
+  double live_min_x_ = 0.0;
+  double live_min_y_ = 0.0;
+  double live_resolution_ = 0.2;
+  int live_width_ = 0;
+  int live_height_ = 0;
 
   mutable std::mutex odom_mutex_;
   OdomState odom_;
@@ -3649,6 +4537,9 @@ private:
   double estimated_odom_v_ = 0.0;
   double estimated_odom_yaw_rate_ = 0.0;
   std::atomic_bool logged_odom_ready_{false};
+  std::atomic<double> unknown_robot_x_{0.0};
+  std::atomic<double> unknown_robot_y_{0.0};
+  std::atomic_bool unknown_robot_pose_ready_{false};
 
   mutable std::mutex goal_mutex_;
   Pose2 raw_goal_;
@@ -3659,11 +4550,22 @@ private:
   std::vector<Pose2> path_;
   Pose2 active_goal_;
   bool have_path_ = false;
+  bool reverse_enable_ = true;
+  double reverse_max_distance_ = 4.0;
+  double reverse_max_speed_ = 0.55;
   uint64_t path_seq_ = 0;
 
   std::atomic_bool plan_requested_{false};
-  double last_plan_time_sec_ = -1.0;
+  std::atomic_bool planner_running_{false};
+  std::atomic<double> last_plan_time_sec_{-1.0};
+  std::atomic<double> last_plan_elapsed_ms_{0.0};
   std::string last_replan_reason_ = "startup";
+  std::mutex planner_mutex_;
+  std::condition_variable planner_cv_;
+  bool planner_stop_ = false;
+  bool planner_wakeup_ = false;
+  std::string planner_reason_ = "startup";
+  std::thread planner_thread_;
 
   std::mt19937 rng_;
   std::vector<double> nominal_v_;
@@ -3671,12 +4573,20 @@ private:
   double last_cmd_v_ = 0.0;
   double last_cmd_steer_ = 0.0;
   double last_cmd_time_sec_ = 0.0;
+  uint64_t stuck_goal_seq_ = 0;
+  double stuck_since_sec_ = 0.0;
+  double stuck_start_x_ = 0.0;
+  double stuck_start_y_ = 0.0;
+  bool stuck_latched_ = false;
 };
 
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<TerrainNavNode>());
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 3);
+  auto node = std::make_shared<TerrainNavNode>();
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }

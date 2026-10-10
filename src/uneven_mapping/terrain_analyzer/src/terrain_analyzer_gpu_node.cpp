@@ -53,7 +53,11 @@ void gpuInit(const Vector2i& size_pos_,
              float ignore_z_min_,
              float ignore_z_max_,
              float beam_sigma2_,
-             const Vector3f& body2sensor_T_);
+             const Vector3f& body2sensor_T_,
+             bool dynamic_clear_enabled_,
+             int dynamic_clear_frames_,
+             int dynamic_ray_stride_,
+             float dynamic_ray_range_);
 
 void computerMapSE2(const int& point_num_,
                     float* points_world,
@@ -77,27 +81,32 @@ void computerMapSE2(const int& point_num_,
 
 namespace {
 
+constexpr size_t kCudaCloudCapacity = 65536u;
+constexpr int64_t kCudaGridCapacity = 100000;
+
 template <typename GetterT, typename SetterT>
 void fillEsdf1d(GetterT getter, SetterT setter, int start, int end, int size)
 {
   std::vector<int> v(static_cast<size_t>(size), 0);
   std::vector<float> z(static_cast<size_t>(size + 1), 0.0f);
 
-  int k = start;
-  v[static_cast<size_t>(start)] = start;
-  z[static_cast<size_t>(start)] = -std::numeric_limits<float>::max();
-  z[static_cast<size_t>(start + 1)] = std::numeric_limits<float>::max();
+  int k = 0;
+  v[0] = start;
+  z[0] = -std::numeric_limits<float>::max();
+  z[1] = std::numeric_limits<float>::max();
 
   for (int q = start + 1; q <= end; ++q)
   {
     float s = 0.0f;
-    do
+    while (true)
     {
+      const int vk = v[static_cast<size_t>(k)];
+      s = ((getter(q) + q * q) - (getter(vk) + vk * vk)) /
+          (2.0f * q - 2.0f * vk);
+      if (s > z[static_cast<size_t>(k)] || k == 0)
+        break;
       --k;
-      s = ((getter(q) + q * q) - (getter(v[static_cast<size_t>(k)]) +
-           v[static_cast<size_t>(k)] * v[static_cast<size_t>(k)])) /
-          (2.0f * q - 2.0f * v[static_cast<size_t>(k)]);
-    } while (s <= z[static_cast<size_t>(k)]);
+    }
 
     ++k;
     v[static_cast<size_t>(k)] = q;
@@ -105,7 +114,7 @@ void fillEsdf1d(GetterT getter, SetterT setter, int start, int end, int size)
     z[static_cast<size_t>(k + 1)] = std::numeric_limits<float>::max();
   }
 
-  k = start;
+  k = 0;
   for (int q = start; q <= end; ++q)
   {
     while (z[static_cast<size_t>(k + 1)] < q)
@@ -225,6 +234,10 @@ public:
     declare_parameter("elevation.ellipsoid_y", 0.3);
     declare_parameter("elevation.ellipsoid_offset", std::vector<double>{0.13, 0.0});
     declare_parameter("elevation.iter_num", 1);
+    declare_parameter("elevation.dynamic_clear_enabled", false);
+    declare_parameter("elevation.dynamic_clear_frames", 3);
+    declare_parameter("elevation.dynamic_ray_stride", 8);
+    declare_parameter("elevation.dynamic_ray_range", 20.0);
 
     declare_parameter("gpu.normal_radius", 0.15);
     declare_parameter("gpu.max_phx", 0.786);
@@ -263,6 +276,13 @@ public:
     const float ellipsoid_x = static_cast<float>(get_parameter("elevation.ellipsoid_x").as_double());
     const float ellipsoid_y = static_cast<float>(get_parameter("elevation.ellipsoid_y").as_double());
     const int iter_num = get_parameter("elevation.iter_num").as_int();
+    const bool dynamic_clear_enabled = get_parameter("elevation.dynamic_clear_enabled").as_bool();
+    const int dynamic_clear_frames = std::clamp(
+      static_cast<int>(get_parameter("elevation.dynamic_clear_frames").as_int()), 2, 10);
+    const int dynamic_ray_stride = std::clamp(
+      static_cast<int>(get_parameter("elevation.dynamic_ray_stride").as_int()), 1, 64);
+    const float dynamic_ray_range = std::clamp(
+      static_cast<float>(get_parameter("elevation.dynamic_ray_range").as_double()), 5.0f, 50.0f);
     const float normal_radius = static_cast<float>(get_parameter("gpu.normal_radius").as_double());
     const float max_phx = static_cast<float>(get_parameter("gpu.max_phx").as_double());
     const float max_phy = static_cast<float>(get_parameter("gpu.max_phy").as_double());
@@ -272,6 +292,32 @@ public:
     const float ignore_z_min = static_cast<float>(get_parameter("sensor.ignore_z_min").as_double());
     const float ignore_z_max = static_cast<float>(get_parameter("sensor.ignore_z_max").as_double());
     const float beam_sigma = static_cast<float>(get_parameter("sensor.beam_sigma").as_double());
+
+    if (!std::isfinite(length_pos.x()) || !std::isfinite(length_pos.y()) ||
+        !std::isfinite(resolution_pos) || !std::isfinite(resolution_yaw) ||
+        length_pos.x() <= 0.0f || length_pos.y() <= 0.0f ||
+        resolution_pos <= 0.0f || resolution_yaw <= 0.0f)
+    {
+      throw std::runtime_error(
+        "terrain_analyzer_gpu map lengths and resolutions must be finite and positive.");
+    }
+
+    const double expected_size_x = std::ceil(length_pos.x() / resolution_pos);
+    const double expected_size_y = std::ceil(length_pos.y() / resolution_pos);
+    if (expected_size_x > static_cast<double>(std::numeric_limits<int>::max()) ||
+        expected_size_y > static_cast<double>(std::numeric_limits<int>::max()))
+    {
+      throw std::runtime_error("terrain_analyzer_gpu map dimensions exceed the supported integer range.");
+    }
+
+    const int64_t expected_grid_cells =
+      static_cast<int64_t>(expected_size_x) * static_cast<int64_t>(expected_size_y);
+    if (expected_grid_cells <= 0 || expected_grid_cells > kCudaGridCapacity)
+    {
+      throw std::runtime_error(
+        "terrain_analyzer_gpu grid would contain " + std::to_string(expected_grid_cells) +
+        " cells; CUDA TerrainBank capacity is " + std::to_string(kCudaGridCapacity) + ".");
+    }
 
     Vector2f ellipsoid_offset_vec;
     ellipsoid_offset_vec << static_cast<float>(ellipsoid_offset[0]),
@@ -294,6 +340,13 @@ public:
 
     const auto size_pos = fused_map_.getSizePos().matrix();
     const int size_yaw = fused_map_.getSizeYaw();
+    const int64_t grid_cells =
+      static_cast<int64_t>(size_pos.x()) * static_cast<int64_t>(size_pos.y());
+    if (grid_cells != expected_grid_cells)
+    {
+      throw std::runtime_error(
+        "terrain_analyzer_gpu map geometry changed unexpectedly during initialization.");
+    }
 
     gpuInit(size_pos,
             size_yaw,
@@ -318,7 +371,11 @@ public:
             ignore_z_min,
             ignore_z_max,
             beam_sigma * beam_sigma,
-            body2sensor_t);
+            body2sensor_t,
+            dynamic_clear_enabled,
+            dynamic_clear_frames,
+            dynamic_ray_stride,
+            dynamic_ray_range);
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       "odom", rclcpp::QoS(rclcpp::KeepLast(50)),
@@ -327,13 +384,14 @@ public:
       "cloud", rclcpp::SensorDataQoS(),
       std::bind(&TerrainAnalyzerGpuNode::cloudCallback, this, std::placeholders::_1));
 
-    fused_pub_ = create_publisher<se2_grid_msgs::msg::SE2Grid>("fused_map", rclcpp::QoS(5));
-    sdf_pub_ = create_publisher<se2_grid_msgs::msg::SE2Grid>("sdf_map", rclcpp::QoS(5));
+    fused_pub_ = create_publisher<se2_grid_msgs::msg::SE2Grid>("fused_map", rclcpp::QoS(1));
+    sdf_pub_ = create_publisher<se2_grid_msgs::msg::SE2Grid>("sdf_map", rclcpp::QoS(1));
 
     RCLCPP_INFO(
       get_logger(),
-      "terrain_analyzer_gpu ready: size=(%.1f, %.1f)m res=%.2fm yaw_res=%.2frad size_yaw=%d",
-      length_pos.x(), length_pos.y(), resolution_pos, resolution_yaw, size_yaw);
+      "terrain_analyzer_gpu ready: size=(%.1f, %.1f)m res=%.2fm yaw_res=%.2frad size_yaw=%d dynamic_clear=%s",
+      length_pos.x(), length_pos.y(), resolution_pos, resolution_yaw, size_yaw,
+      dynamic_clear_enabled ? "on" : "off");
   }
 
 private:
@@ -381,12 +439,29 @@ private:
 
     const auto t0 = std::chrono::steady_clock::now();
 
-    std::vector<float> points_world(static_cast<size_t>(cloud.size()) * 3u, 0.0f);
-    for (size_t i = 0; i < cloud.size(); ++i)
+    const size_t input_points = cloud.size();
+    const size_t candidate_points = std::min(input_points, kCudaCloudCapacity);
+    std::vector<float> points_world;
+    points_world.reserve(candidate_points * 3u);
+    for (size_t i = 0; i < candidate_points; ++i)
     {
-      points_world[i * 3u] = cloud.points[i].x;
-      points_world[i * 3u + 1u] = cloud.points[i].y;
-      points_world[i * 3u + 2u] = cloud.points[i].z;
+      const size_t source_idx = i * input_points / candidate_points;
+      const auto& point = cloud.points[source_idx];
+      if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+        continue;
+      points_world.push_back(point.x);
+      points_world.push_back(point.y);
+      points_world.push_back(point.z);
+    }
+    const int point_count = static_cast<int>(points_world.size() / 3u);
+    if (point_count == 0)
+      return;
+    if (input_points > kCudaCloudCapacity)
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "CUDA terrain input has %zu points; uniformly limiting it to %d points.",
+        input_points, point_count);
     }
 
     const auto pose_cov = Eigen::Map<const Eigen::Matrix<double, 6, 6, Eigen::RowMajor>>(
@@ -418,7 +493,7 @@ private:
     const int yaw_num = fused_map_.getSizeYaw();
 
     computerMapSE2(
-      static_cast<int>(cloud.size()),
+      point_count,
       points_world.data(),
       resolution_pos,
       yaw_num,
@@ -452,8 +527,8 @@ private:
     const double elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 2000,
-      "terrain_analyzer_gpu: pts=%zu proc=%.1fms yaw=%d map=(%d,%d)",
-      cloud.size(), elapsed_ms, yaw_num, size_pos_map.x(), size_pos_map.y());
+      "terrain_analyzer_gpu: pts=%d proc=%.1fms yaw=%d map=(%d,%d)",
+      point_count, elapsed_ms, yaw_num, size_pos_map.x(), size_pos_map.y());
   }
 
   void publishMaps(const builtin_interfaces::msg::Time& stamp)

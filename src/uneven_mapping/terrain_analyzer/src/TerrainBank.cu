@@ -18,6 +18,11 @@
 
 using namespace Eigen;
 using namespace std;
+static Vector3f sensor_offset_body = Vector3f::Zero();
+static bool dynamic_clear_enabled_host = false;
+static int dynamic_clear_frames_host = 3;
+static int dynamic_ray_stride_host = 8;
+static float dynamic_ray_range_host = 20.0f;
 
 // Eigen::SelfAdjointEigenSolver<Eigen::Matrix<float, 6, 6>> esolver(ATA);
 // Eigen::Matrix<float, 1, 6> matE;
@@ -95,6 +100,11 @@ __device__ float sdf[GRID_NUM];
 __device__ int temp_idx[CLOUD_NUM];
 __device__ float temp_var[CLOUD_NUM];
 __device__ float temp_height[CLOUD_NUM];
+__device__ int cell_head[GRID_NUM];
+__device__ int point_next[CLOUD_NUM];
+__device__ int free_ray_mask[GRID_NUM];
+__device__ int free_ray_scans[GRID_NUM];
+__device__ float replacement_ground[GRID_NUM];
 
 __host__ __device__ void wrapIndexOne(int& idx, int buffer_size)
 {
@@ -289,6 +299,7 @@ __global__ void init_map()
     {
         map_nan[map_idx] = true;
         sdf[map_idx] = 0.0;
+        free_ray_scans[map_idx] = 0;
     }
 
     //xulong
@@ -342,7 +353,10 @@ __global__ void clear_map(Vector2i clear_idx,
     if (clear_all)
     {
         if (map_idx < xy_num)
+        {
             map_nan[map_idx] = true;
+            free_ray_scans[map_idx] = 0;
+        }
     }
 
     else if (map_idx < xy_num)
@@ -352,9 +366,17 @@ __global__ void clear_map(Vector2i clear_idx,
         int cell_num_row = size_col * clear_rows;
         int cell_num_col = size_row * clear_cols;
         if (map_idx < cell_num_row)
-            map_nan[map_idx / clear_rows * size_row + map_idx % clear_rows + clear_idx[0]] = true;
+        {
+            int idx = map_idx / clear_rows * size_row + map_idx % clear_rows + clear_idx[0];
+            map_nan[idx] = true;
+            free_ray_scans[idx] = 0;
+        }
         if (map_idx < cell_num_col)
-            map_nan[clear_idx[1] * size_row + map_idx] = true;
+        {
+            int idx = clear_idx[1] * size_row + map_idx;
+            map_nan[idx] = true;
+            free_ray_scans[idx] = 0;
+        }
         if (clear_two)
         {
             int clear_rows2 = clear_nums2[0];
@@ -362,10 +384,28 @@ __global__ void clear_map(Vector2i clear_idx,
             int cell_num_row2 = size_col * clear_rows2;
             int cell_num_col2 = size_row * clear_cols2;
             if (map_idx < cell_num_row2)
-                map_nan[map_idx / clear_rows2 * size_row + map_idx % clear_rows2 + clear_idx2[0]] = true;
+            {
+                int idx = map_idx / clear_rows2 * size_row + map_idx % clear_rows2 + clear_idx2[0];
+                map_nan[idx] = true;
+                free_ray_scans[idx] = 0;
+            }
             if (map_idx < cell_num_col2)
-                map_nan[clear_idx2[1] * size_row + map_idx] = true;
+            {
+                int idx = clear_idx2[1] * size_row + map_idx;
+                map_nan[idx] = true;
+                free_ray_scans[idx] = 0;
+            }
         }
+    }
+}
+
+__global__ void reset_scan_cells()
+{
+    int map_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (map_idx < xy_num)
+    {
+        cell_head[map_idx] = -1;
+        free_ray_mask[map_idx] = 0;
     }
 }
 
@@ -445,6 +485,7 @@ __global__ void compute_var(int point_num,
                 temp_height[pt_idx] = point_world.z();
                 temp_idx[pt_idx] = true_idx;
                 temp_var[pt_idx] = variance;
+                point_next[pt_idx] = atomicExch(&cell_head[true_idx], pt_idx);
             }
             else
                 temp_idx[pt_idx] = -1;
@@ -454,7 +495,7 @@ __global__ void compute_var(int point_num,
     }
 }
 
-__global__ void compute_elevation(int point_num)
+__global__ void compute_elevation()
 {
     // add to map ( var update using KF )
     int map_idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -462,13 +503,10 @@ __global__ void compute_elevation(int point_num)
     {
         sdf[map_idx] = 0.0;
         // risk[map_idx] = 0.0;
-        for (int i=0; i<point_num; i++)
+        for (int i=cell_head[map_idx]; i!=-1; i=point_next[i])
         {
-            int true_idx = temp_idx[i];
             float height = temp_height[i];
             float tvar = temp_var[i];
-            if (true_idx == -1 || true_idx != map_idx)
-                continue;
 
             if (map_nan[map_idx])
             {
@@ -499,6 +537,115 @@ __global__ void compute_elevation(int point_num)
             elevation[map_idx] = NAN;
             var[map_idx] = NAN;
         }
+    }
+}
+
+__global__ void mark_free_rays(int point_num, const float* points_world,
+                               Vector3f sensor_origin, Array2i start_index,
+                               Vector2f position, int ray_stride, float ray_range)
+{
+    const int point_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (point_idx >= point_num || point_idx % ray_stride != 0) return;
+    const Vector3f endpoint(points_world[point_idx * 3],
+                            points_world[point_idx * 3 + 1],
+                            points_world[point_idx * 3 + 2]);
+    const Vector3f displacement = endpoint - sensor_origin;
+    const float distance = displacement.norm();
+    if (!isfinite(distance) || distance < 1.5f) return;
+    const Vector3f direction = displacement / distance;
+    const float limit = fminf(ray_range, distance - 0.7f);
+    const int steps = static_cast<int>(limit * resolution_pos_inv);
+    for (int step = 4; step <= steps; ++step)
+    {
+        const Vector3f sample = sensor_origin + direction * (step * resolution_pos);
+        const float grid_x = (origin[0] + position.x() - sample.x()) * resolution_pos_inv;
+        const float grid_y = (origin[1] + position.y() - sample.y()) * resolution_pos_inv;
+        if (grid_x < 0.0f || grid_y < 0.0f ||
+            grid_x >= size_pos[0] || grid_y >= size_pos[1]) continue;
+        int ix = static_cast<int>(grid_x) + start_index[0];
+        int iy = static_cast<int>(grid_y) + start_index[1];
+        wrapIndexOne(ix, size_pos[0]);
+        wrapIndexOne(iy, size_pos[1]);
+        const int cell = iy * size_pos[0] + ix;
+        if (cell_head[cell] != -1 || map_nan[cell]) continue;
+        if (fabsf(elevation[cell] - sample.z()) <= 0.32f)
+            atomicExch(&free_ray_mask[cell], 1);
+    }
+}
+
+__global__ void find_dynamic_ground(Array2i start_index, int clear_frames)
+{
+    const int cell = threadIdx.x + blockIdx.x * blockDim.x;
+    if (cell >= xy_num) return;
+    replacement_ground[cell] = NAN;
+    if (map_nan[cell] || cell_head[cell] != -1)
+    {
+        free_ray_scans[cell] = 0;
+        return;
+    }
+    if (free_ray_mask[cell] != 0)
+        free_ray_scans[cell] = min(10, free_ray_scans[cell] + 1);
+    if (free_ray_scans[cell] < clear_frames) return;
+
+    const int physical_x = cell % size_pos[0];
+    const int physical_y = cell / size_pos[0];
+    int logical_x = physical_x - start_index[0];
+    int logical_y = physical_y - start_index[1];
+    wrapIndexOne(logical_x, size_pos[0]);
+    wrapIndexOne(logical_y, size_pos[1]);
+    float low = INFINITY;
+    int support = 0;
+    for (int dy = -3; dy <= 3; ++dy)
+    {
+        if (logical_y + dy < 0 || logical_y + dy >= size_pos[1]) continue;
+        for (int dx = -3; dx <= 3; ++dx)
+        {
+            if (logical_x + dx < 0 || logical_x + dx >= size_pos[0] ||
+                (dx == 0 && dy == 0)) continue;
+            int ix = physical_x + dx;
+            int iy = physical_y + dy;
+            wrapIndexOne(ix, size_pos[0]);
+            wrapIndexOne(iy, size_pos[1]);
+            const int nearby = iy * size_pos[0] + ix;
+            if (!map_nan[nearby] && elevation[nearby] < elevation[cell] - 0.4f)
+            {
+                low = fminf(low, elevation[nearby]);
+                ++support;
+            }
+        }
+    }
+    if (support < 3 || !isfinite(low)) return;
+    float sum = 0.0f;
+    int count = 0;
+    for (int dy = -3; dy <= 3; ++dy)
+    {
+        if (logical_y + dy < 0 || logical_y + dy >= size_pos[1]) continue;
+        for (int dx = -3; dx <= 3; ++dx)
+        {
+            if (logical_x + dx < 0 || logical_x + dx >= size_pos[0]) continue;
+            int ix = physical_x + dx;
+            int iy = physical_y + dy;
+            wrapIndexOne(ix, size_pos[0]);
+            wrapIndexOne(iy, size_pos[1]);
+            const int nearby = iy * size_pos[0] + ix;
+            if (!map_nan[nearby] && elevation[nearby] <= low + 0.25f)
+            {
+                sum += elevation[nearby];
+                ++count;
+            }
+        }
+    }
+    if (count >= 3) replacement_ground[cell] = sum / count;
+}
+
+__global__ void apply_dynamic_ground()
+{
+    const int cell = threadIdx.x + blockIdx.x * blockDim.x;
+    if (cell < xy_num && isfinite(replacement_ground[cell]))
+    {
+        elevation[cell] = replacement_ground[cell];
+        var[cell] = fmaxf(min_var, 0.01f);
+        free_ray_scans[cell] = 0;
     }
 }
 
@@ -907,10 +1054,19 @@ void gpuInit(const Vector2i& size_pos_,
             float ignore_z_min_,
             float ignore_z_max_,
             float beam_sigma2_,
-            const Vector3f& body2sensor_T_)
+            const Vector3f& body2sensor_T_,
+            bool dynamic_clear_enabled_,
+            int dynamic_clear_frames_,
+            int dynamic_ray_stride_,
+            float dynamic_ray_range_)
 {
     // set up
     cudaSetDevice(0);
+    sensor_offset_body = body2sensor_T_;
+    dynamic_clear_enabled_host = dynamic_clear_enabled_;
+    dynamic_clear_frames_host = dynamic_clear_frames_;
+    dynamic_ray_stride_host = dynamic_ray_stride_;
+    dynamic_ray_range_host = dynamic_ray_range_;
     bool h_map_nan[GRID_NUM];
     float h_elevation[GRID_NUM];
     float h_var[GRID_NUM];
@@ -1247,12 +1403,14 @@ void computerMapSE2(const int& point_num_,
 
     // get points
     Vector3f world_T_ = -body_R_.transpose() * body_T_;
-    float* dev_points;
-    cudaMalloc((void**)&dev_points, point_num_ * sizeof(float) * 3);
-    cudaMemcpy(dev_points, points_world, point_num_ * sizeof(float) * 3, cudaMemcpyHostToDevice);
+    static float* dev_points = nullptr;
+    if (dev_points == nullptr)
+        checkCudaError(cudaMalloc((void**)&dev_points, CLOUD_NUM * sizeof(float) * 3));
+    checkCudaError(cudaMemcpy(dev_points, points_world, point_num_ * sizeof(float) * 3, cudaMemcpyHostToDevice));
 
     // compute var
     int blocksPerGrid =(point_num_ + THREAD_NUM - 1) / THREAD_NUM;
+    reset_scan_cells<<<num_block, THREAD_NUM>>>();
 	compute_var<<<blocksPerGrid, THREAD_NUM>>>(point_num_,
                                                 dev_points, 
                                                 world_T_,
@@ -1264,7 +1422,6 @@ void computerMapSE2(const int& point_num_,
                                                 );
     // cudaDeviceSynchronize();
     usleep(1);
-    cudaFree(dev_points);
 
     clock_t t0 = clock();
     clock_t t1;
@@ -1273,7 +1430,17 @@ void computerMapSE2(const int& point_num_,
 
     // compute map
     blocksPerGrid = (xy_num_ + THREAD_NUM - 1) / THREAD_NUM;
-	compute_elevation<<<blocksPerGrid, THREAD_NUM>>>(point_num_);
+	compute_elevation<<<blocksPerGrid, THREAD_NUM>>>();
+    if (dynamic_clear_enabled_host)
+    {
+        const Vector3f sensor_origin = body_T_ - body_R_ * sensor_offset_body;
+        const int cloud_blocks = (point_num_ + THREAD_NUM - 1) / THREAD_NUM;
+        mark_free_rays<<<cloud_blocks, THREAD_NUM>>>(point_num_, dev_points, sensor_origin,
+                                                     start_idx_, position_, dynamic_ray_stride_host,
+                                                     dynamic_ray_range_host);
+        find_dynamic_ground<<<blocksPerGrid, THREAD_NUM>>>(start_idx_, dynamic_clear_frames_host);
+        apply_dynamic_ground<<<blocksPerGrid, THREAD_NUM>>>();
+    }
     // usleep(1);
     cudaDeviceSynchronize();
     t1 = clock();
@@ -1288,15 +1455,23 @@ void computerMapSE2(const int& point_num_,
     
     t0= clock();
 
-    float* h_zbx_1d;
-    float* h_zby_1d;
+    static float* h_zbx_1d = nullptr;
+    static float* h_zby_1d = nullptr;
     /* hxlin modify */
-    float* h_risk_1d;
+    static float* h_risk_1d = nullptr;
 
-    cudaMalloc((void**)&h_zbx_1d, xyyaw_num_ * sizeof(float));
-    cudaMalloc((void**)&h_zby_1d, xyyaw_num_ * sizeof(float));
+    static int allocated_se2_cells = 0;
+    if (allocated_se2_cells < xyyaw_num_)
+    {
+        if (h_zbx_1d != nullptr) cudaFree(h_zbx_1d);
+        if (h_zby_1d != nullptr) cudaFree(h_zby_1d);
+        if (h_risk_1d != nullptr) cudaFree(h_risk_1d);
+        checkCudaError(cudaMalloc((void**)&h_zbx_1d, xyyaw_num_ * sizeof(float)));
+        checkCudaError(cudaMalloc((void**)&h_zby_1d, xyyaw_num_ * sizeof(float)));
+        checkCudaError(cudaMalloc((void**)&h_risk_1d, xyyaw_num_ * sizeof(float)));
+        allocated_se2_cells = xyyaw_num_;
+    }
     /* hxlin modify */
-    cudaMalloc((void**)&h_risk_1d, xyyaw_num_ * sizeof(float));
 
     blocksPerGrid = (xyyaw_num_ + THREAD_NUM - 1) / THREAD_NUM;
     compute_map_se2<<<blocksPerGrid, THREAD_NUM>>>(start_idx_, 
@@ -1338,7 +1513,4 @@ void computerMapSE2(const int& point_num_,
     t1 = clock();
     // printf("get map=%fms\n", (float)(t1-t0)/1000.0);
 
-    cudaFree(h_zbx_1d);
-    cudaFree(h_zby_1d);
-    cudaFree(h_risk_1d);
 }

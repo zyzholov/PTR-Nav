@@ -32,6 +32,25 @@
 
 ---
 
+## 2026-10-08 可视化与链路回归
+
+本轮将地形分析与规划共用的 RViz2 配置独立为
+`src/fsgp_bgk_se2/rviz/hunter_terrain_navigation.rviz`。默认视图包含地形高程、跟随车辆航向的 FSGP-BGK/SEB 风险、实时障碍、规划路径、目标、FAST-LIO 里程计和车辆模型；累计 `/Laser_map` 保留为关闭的诊断层，以免启动时遮挡局部导航图并拖慢渲染。
+
+`se2_grid_converter` 已修正矩形网格、环形缓存起始索引、行/列存储、数据偏移和缺失图层静默回退问题。风险点云从 `bgk_mean` 取高程贴地，并按 `/Odometry` 选择 SO(2) 航向切片。新增 `visualization_probe.py` 会验证两张点云的非空性、坐标范围、共同网格和贴地高度差。
+
+实测结果：
+
+* `se2_grid_converter` 与 `fsgp_bgk_se2` 共 20 个测试通过。
+* GPU 无 GUI 全链路 `log/modular_smoke_20261008_095419` 通过；高程/风险点云分别 4254 点，共同网格 4254 点，中位高度差 0.020 m；LiDAR 10.00 Hz、外置 IMU 199.5 Hz、地形分析 10.03 Hz、FSGP-BGK 5.00 Hz。
+* GUI 全链路 `log/modular_smoke_20261008_095905` 通过，截图为 `log/modular_smoke_20261008_095905/rviz_snapshot.png`。
+* 无障碍 2 m 目标 `log/modular_smoke_20261008_101011` 通过，车辆运动 1.48 m，最终目标误差 0.52 m，FAST-LIO 与 Isaac 真值的最大 XY 误差 0.003 m。
+* detour 导航回归 `log/modular_smoke_20261008_095618` 未通过：规划器已经输出约 -0.40 rad 转向，物理仿真也测到约 -0.52 rad/s 横摆，但车辆在实时障碍附近停止。该问题属于障碍/规划闭环，不能以 RViz 显示通过代替，后续需要单独修复。
+
+本轮没有提交或推送 GitHub。
+
+---
+
 ## 二、系统架构
 
 ```
@@ -86,7 +105,7 @@
 - [x] Livox MID360 激光雷达插件集成
 - [x] IMU 插件配置
 - [x] 多地图支持 (mars_gale 等)
-- [x] 启动脚本 (`run_hunter_gazebo.sh`, `run_hunter_fastlio.sh`)
+- [x] 启动脚本 (`scripts/old/sim/run_hunter_gazebo.sh`, `scripts/sim/start_mapping.sh`)
 
 ### 3.2 FAST_LIO2 集成
 
@@ -405,11 +424,11 @@ MPC 中已实现滑动参考点 (`getFutureWps`)，但更新时机可能需要�
 ```bash
 # 终端 1: Gazebo + 车辆
 cd /home/z/workspace_zyz/seb_clean
-./run_hunter_gazebo.sh map:=mars_gale
+scripts/old/sim/run_hunter_gazebo.sh map:=mars_gale
 
 # 终端 2: FAST_LIO2
 cd /home/z/workspace_zyz/seb_clean
-./run_hunter_fastlio.sh
+scripts/sim/start_mapping.sh
 
 # 终端 3: 地形分析 + 规划 + MPC + RViz
 cd /home/z/workspace_zyz/seb_clean
@@ -473,3 +492,30 @@ ros2 topic echo /hunter_se/cmd_vel
 | [GAZEBO_FASTLIO_TERRAIN_PLANNING_NEXT_CONTEXT.md](../GAZEBO_FASTLIO_TERRAIN_PLANNING_NEXT_CONTEXT.md) | 上下文交接文档 |
 | [GAZEBO_FASTLIO_TERRAIN_PLANNING_DEBUG_GUIDE.md](../GAZEBO_FASTLIO_TERRAIN_PLANNING_DEBUG_GUIDE.md) | 调试指南 |
 | [NEOS_REAL_DEPLOYMENT_GUIDE.md](../NEOS_REAL_DEPLOYMENT_GUIDE.md) | 实车部署指南 |
+
+## 2026-10-03 继续回归：参数链路与动态地图
+
+本轮先修复了 FAST-LIO 动态地图参数声明不完整的问题。此前 YAML 中的
+`dynamic_ground_clear_frames`、`dynamic_ground_min_height` 和
+`dynamic_expand_min_seeds` 没有全部显式声明，节点可能静默使用 C++ 默认值。
+现在节点声明、读取并打印完整动态地图策略；`mapping_parameters.py` 会在启动后
+通过 ROS 参数服务逐项核对配置。GPU 全链路的 68 项参数审计通过。
+
+当前 Isaac 默认策略保持保守：直接自由射线清除开启，连续 3 帧证据；地面替换和
+邻域扩张关闭。后两者属于实验性累计图历史清除，之前的多视角护栏试验出现过静态
+障碍最低保留数下降，因此不能作为默认的实时清残影方案。
+
+回归结果：
+
+| 测试 | 结果 | 证据 |
+|------|------|------|
+| GPU 四模块静止链路 | 通过；LiDAR 10.02 Hz、IMU 200.04 Hz、地形 10.03 Hz、FSGP 5.01 Hz，FAST-LIO XY 最大误差 0.002 m | `log/modular_smoke_20261003_232904` |
+| CPU fallback 静止链路 | 通过；LiDAR 10.02 Hz、IMU 200.01 Hz、地形新鲜时间戳 10.04 Hz、FSGP 7.48 Hz，FAST-LIO XY 最大误差 0.003 m | `log/modular_smoke_20261003_233944` |
+| 动态护栏 | 通过；静态护栏最低 4/5，累计图观测清除 0.74 s，注册层障碍降为 0 | `log/modular_smoke_20261003_233119` |
+| 静态障碍 detour | 通过；到达目标，最近障碍距离 1.473 m，风险图周期 P95 0.222 s、年龄 P95 0.09 s | `log/modular_smoke_20261003_234151` |
+| 移动障碍绕行/清除 | 到达目标；风险/live 层 0.09/0.19 s 清除，但严格累计图 ROI 基线不足，按测试规则拒绝通过 | `log/modular_smoke_20261003_233427` |
+
+因此目前可以确认：实时注册点云、风险图和 live obstacle 层可用于规划控制；
+`/Laser_map` 仍是可视化累计历史，不能承诺在所有视角和遮挡条件下固定时间清除
+动态残影。后续应补充有明确高障碍基线的移动障碍 fixture，再评估累计图清除，而
+不是放宽静态安全判定。

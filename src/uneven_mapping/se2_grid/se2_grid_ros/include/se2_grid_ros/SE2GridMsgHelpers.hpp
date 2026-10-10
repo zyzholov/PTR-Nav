@@ -84,6 +84,8 @@ unsigned int getRows(const MultiArrayMessageType_& message)
 template<typename EigenType_, typename MultiArrayMessageType_>
 bool matrixEigenCopyToMultiArrayMessage(const EigenType_& e, MultiArrayMessageType_& m)
 {
+  m.data.clear();
+  m.layout.data_offset = 0;
   m.layout.dim.resize(nDimensions());
   m.layout.dim[0].stride = e.size();
   m.layout.dim[0].size = e.outerSize();
@@ -98,7 +100,7 @@ bool matrixEigenCopyToMultiArrayMessage(const EigenType_& e, MultiArrayMessageTy
     m.layout.dim[1].label = storageIndexNames[StorageIndices::Row];
   }
 
-  m.data.insert(m.data.begin() + m.layout.data_offset, e.data(), e.data() + e.size());
+  m.data.insert(m.data.end(), e.data(), e.data() + e.size());
   return true;
 }
 

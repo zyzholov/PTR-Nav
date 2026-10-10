@@ -7,6 +7,7 @@
   <xacro:arg name="terrain_lidar_profile" default="normal" />
   <xacro:arg name="enable_livox" default="true" />
   <xacro:arg name="enable_d455" default="true" />
+  <xacro:arg name="enable_suspension" default="false" />
   <xacro:include filename="$(find hunter_se_gazebo)/xacro/hunter_se.gazebo" />
   <xacro:include filename="$(find ros2_livox_simulation)/urdf/mid360.xacro" />
   <xacro:property name="drive_mode_value" value="$(arg drive_mode)" />
@@ -25,6 +26,7 @@
   <xacro:property name="front_wheel_width" value="0.0987" />
   <xacro:property name="rear_wheel_radius" value="0.13495" />
   <xacro:property name="rear_wheel_width" value="0.1540" />
+  <xacro:property name="enable_suspension_value" value="$(arg enable_suspension)" />
   <xacro:property name="locked_planar_drive_mode" value="${drive_mode_value == 'planar'}" />
   <xacro:property name="planar_visual_drive_mode" value="${drive_mode_value == 'planar_visual'}" />
   <xacro:property name="steering_joint_limit" value="${0.0 if locked_planar_drive_mode else 0.69}" />
@@ -71,6 +73,33 @@
       </geometry>
     </collision>
   </link>
+  <link name="fr_susp_left_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.20" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+    <visual>
+      <geometry><box size="0.001 0.001 0.001" /></geometry>
+    </visual>
+  </link>
+  <xacro:if value="${enable_suspension_value}">
+    <joint name="fr_susp_left_joint" type="prismatic">
+      <origin xyz="0.34058 0.24619 -0.1535" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="fr_susp_left_link" />
+      <axis xyz="0 0 1" />
+      <limit lower="-0.040" upper="0.040" effort="1200" velocity="0.8" />
+      <dynamics damping="45.0" friction="1.0" />
+    </joint>
+  </xacro:if>
+  <xacro:unless value="${enable_suspension_value}">
+    <joint name="fr_susp_left_joint" type="fixed">
+      <origin xyz="0.34058 0.24619 -0.1535" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="fr_susp_left_link" />
+    </joint>
+  </xacro:unless>
   <link
     name="fr_steer_left_link">
     <inertial>
@@ -113,10 +142,10 @@
     name="fr_steer_left_joint"
     type="revolute">
     <origin
-      xyz="0.34058 0.24619 -0.1535"
+      xyz="0 0 0"
       rpy="0 0 0" />
     <parent
-      link="base_link" />
+      link="fr_susp_left_link" />
     <child
       link="fr_steer_left_link" />
     <axis
@@ -179,8 +208,35 @@
       link="fr_left_link" />
     <axis
       xyz="0 0 -1" />
-    <dynamics damping="0.35" friction="0.08" />
+    <dynamics damping="0.02" friction="0.01" />
   </joint>
+  <link name="fr_susp_right_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.20" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+    <visual>
+      <geometry><box size="0.001 0.001 0.001" /></geometry>
+    </visual>
+  </link>
+  <xacro:if value="${enable_suspension_value}">
+    <joint name="fr_susp_right_joint" type="prismatic">
+      <origin xyz="0.34219 -0.24619 -0.1535" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="fr_susp_right_link" />
+      <axis xyz="0 0 1" />
+      <limit lower="-0.040" upper="0.040" effort="1200" velocity="0.8" />
+      <dynamics damping="45.0" friction="1.0" />
+    </joint>
+  </xacro:if>
+  <xacro:unless value="${enable_suspension_value}">
+    <joint name="fr_susp_right_joint" type="fixed">
+      <origin xyz="0.34219 -0.24619 -0.1535" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="fr_susp_right_link" />
+    </joint>
+  </xacro:unless>
   <link
     name="fr_steer_right_link">
     <inertial>
@@ -223,10 +279,10 @@
     name="fr_steer_right_joint"
     type="revolute">
     <origin
-      xyz="0.34219 -0.24619 -0.1535"
+      xyz="0 0 0"
       rpy="0 0 0" />
     <parent
-      link="base_link" />
+      link="fr_susp_right_link" />
     <child
       link="fr_steer_right_link" />
     <axis
@@ -289,9 +345,36 @@
       link="fr_right_link" />
     <axis
       xyz="0 0 1" />
-    <dynamics damping="0.35" friction="0.08" />
+    <dynamics damping="0.02" friction="0.01" />
   </joint>
   
+  <link name="re_susp_left_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.20" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+    <visual>
+      <geometry><box size="0.001 0.001 0.001" /></geometry>
+    </visual>
+  </link>
+  <xacro:if value="${enable_suspension_value}">
+    <joint name="re_susp_left_joint" type="prismatic">
+      <origin xyz="-0.2078 0.252 -0.158" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="re_susp_left_link" />
+      <axis xyz="0 0 1" />
+      <limit lower="-0.040" upper="0.040" effort="1200" velocity="0.8" />
+      <dynamics damping="45.0" friction="1.0" />
+    </joint>
+  </xacro:if>
+  <xacro:unless value="${enable_suspension_value}">
+    <joint name="re_susp_left_joint" type="fixed">
+      <origin xyz="-0.2078 0.252 -0.158" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="re_susp_left_link" />
+    </joint>
+  </xacro:unless>
   <link
     name="re_left_link">
     <inertial>
@@ -335,16 +418,43 @@
     name="re_left_joint"
     type="continuous">
     <origin
-      xyz="-0.2078 0.252 -0.158"
+      xyz="0 0 0"
       rpy="1.5708 0 0" />
     <parent
-      link="base_link" />
+      link="re_susp_left_link" />
     <child
       link="re_left_link" />
     <axis
       xyz="0 0 -1" />
-    <dynamics damping="0.35" friction="0.08" />
+    <dynamics damping="0.02" friction="0.01" />
   </joint>
+  <link name="re_susp_right_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.20" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+    <visual>
+      <geometry><box size="0.001 0.001 0.001" /></geometry>
+    </visual>
+  </link>
+  <xacro:if value="${enable_suspension_value}">
+    <joint name="re_susp_right_joint" type="prismatic">
+      <origin xyz="-0.2078 -0.252 -0.158" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="re_susp_right_link" />
+      <axis xyz="0 0 1" />
+      <limit lower="-0.040" upper="0.040" effort="1200" velocity="0.8" />
+      <dynamics damping="45.0" friction="1.0" />
+    </joint>
+  </xacro:if>
+  <xacro:unless value="${enable_suspension_value}">
+    <joint name="re_susp_right_joint" type="fixed">
+      <origin xyz="-0.2078 -0.252 -0.158" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="re_susp_right_link" />
+    </joint>
+  </xacro:unless>
   <link
     name="re_right_link">
     <inertial>
@@ -388,15 +498,15 @@
     name="re_right_joint"
     type="continuous">
     <origin
-      xyz="-0.2078 -0.252 -0.158"
+      xyz="0 0 0"
       rpy="-1.5708 0 0" />
     <parent
-      link="base_link" />
+      link="re_susp_right_link" />
     <child
       link="re_right_link" />
     <axis
       xyz="0 0 1" />
-    <dynamics damping="0.35" friction="0.08" />
+    <dynamics damping="0.02" friction="0.01" />
   </joint>
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="/home/z/workspace_zyz/seb_clean"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC_DIR="$ROOT_DIR/src"
 FASTLIO_SRC_DIR="$SRC_DIR/FAST_LIO"
 
@@ -13,6 +13,14 @@ EXTRA_ARGS=()
 
 for arg in "$@"; do
   case "$arg" in
+    -h|--help)
+      cat <<'EOF'
+Usage: scripts/sim/start_mapping.sh [rviz:=true|false] [config_file:=auto|FILE] [dynamic_clear_enabled:=true|false] [--show-args]
+Starts FAST-LIO only after receiving simulation clock, LiDAR and external IMU.
+PointCloud2 and Livox CustomMsg select different configurations automatically.
+EOF
+      exit 0
+      ;;
     config_path:=*)
       CONFIG_PATH="${arg#config_path:=}"
       ;;
@@ -28,9 +36,9 @@ for arg in "$@"; do
   esac
 done
 
-source /opt/ros/humble/setup.bash
 unset PYTHONHOME
 unset PYTHONPATH
+source /opt/ros/humble/setup.bash
 
 if [[ -f "/home/z/workspace_zyz/driver/ws_livox/install/setup.bash" ]]; then
   source "/home/z/workspace_zyz/driver/ws_livox/install/setup.bash"
@@ -53,6 +61,14 @@ fi
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 
+source "$ROOT_DIR/scripts/lib/runtime.sh"
+if hunter_show_args "${EXTRA_ARGS[@]}"; then
+  echo "[hunter_fastlio] Wrapper config: path=$CONFIG_PATH file=$CONFIG_FILE rviz=$RVIZ"
+  echo "[hunter_fastlio] file=auto selects isaac_hunter_mid360_pointcloud.yaml for Isaac PointCloud2."
+  echo "[hunter_fastlio] ROS launch defaults below are not the wrapper's runtime selection."
+  exec ros2 launch fast_lio mapping_hunter_sim.launch.py --show-args
+fi
+
 echo "[hunter_fastlio] Waiting for /clock, /livox/lidar and /livox/imu ..."
 ready=0
 for _ in $(seq 1 60); do
@@ -71,19 +87,33 @@ if [[ $ready -ne 1 ]]; then
   exit 1
 fi
 
+wait_topic_sample() {
+  local topic="$1"
+  local field="${2:-}"
+  local output=""
+  local attempt=0
+  for attempt in $(seq 1 5); do
+    cmd=(ros2 topic echo --no-daemon --once --qos-profile sensor_data --spin-time 2 --no-arr --no-str)
+    if [[ -n "$field" ]]; then
+      cmd+=(--field "$field")
+    fi
+    cmd+=("$topic")
+    if output="$(timeout 10 "${cmd[@]}" 2>&1)"; then
+      return 0
+    fi
+    if (( attempt == 5 )); then
+      echo "[hunter_fastlio] ERROR: topic $topic is visible but no data was received." >&2
+      sed -n '1,8p' <<<"$output" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 for spec in "/clock:" "/livox/lidar:header" "/livox/imu:header"; do
   topic="${spec%%:*}"
   field="${spec#*:}"
-  cmd=(ros2 topic echo --no-daemon --once --qos-profile sensor_data --spin-time 2 --no-arr --no-str)
-  if [[ -n "$field" ]]; then
-    cmd+=(--field "$field")
-  fi
-  cmd+=("$topic")
-  if ! output="$(timeout 10 "${cmd[@]}" 2>&1)"; then
-    echo "[hunter_fastlio] ERROR: topic $topic is visible but no data was received." >&2
-    sed -n '1,8p' <<<"$output" >&2
-    exit 1
-  fi
+  wait_topic_sample "$topic" "$field"
 done
 
 lidar_msg_type="$(timeout 5 ros2 topic info -v /livox/lidar 2>/dev/null | awk -F': ' '/^Type:/ {print $2; exit}')"
@@ -127,15 +157,19 @@ fi
 odom_info="$(timeout 5 ros2 topic info --no-daemon --verbose /Odometry 2>/dev/null || true)"
 existing_odom_publishers="$(awk '/Publisher count:/ {print $3; exit}' <<<"$odom_info")"
 if [[ -n "$existing_odom_publishers" && "$existing_odom_publishers" -gt 0 ]]; then
-  echo "[hunter_fastlio] WARNING: /Odometry already has ${existing_odom_publishers} publisher(s) before FAST_LIO starts." >&2
+  echo "[hunter_fastlio] ERROR: /Odometry already has ${existing_odom_publishers} publisher(s) before FAST_LIO starts." >&2
   echo "  FAST_LIO also publishes /Odometry. Isaac truth odometry should use /isaac/ground_truth/odometry." >&2
-  echo "  If RViz/control looks jumpy, stop the old publisher or restart Isaac with the current run_hunter_isaac_sim.sh defaults." >&2
+  echo "  If RViz/control looks jumpy, stop the old publisher or restart Isaac with scripts/sim/start_simulation.sh defaults." >&2
+  exit 2
 fi
 
 if [[ "$lidar_msg_type" == "sensor_msgs/msg/PointCloud2" ]]; then
-  width="$(timeout 10 ros2 topic echo --no-daemon --once --qos-profile sensor_data --spin-time 2 --field width /livox/lidar 2>/dev/null | awk '/^[0-9]+$/ {print $1; exit}')"
-  height="$(timeout 10 ros2 topic echo --no-daemon --once --qos-profile sensor_data --spin-time 2 --field height /livox/lidar 2>/dev/null | awk '/^[0-9]+$/ {print $1; exit}')"
-  if [[ -n "$width" && -n "$height" ]]; then
+  width="$(timeout 10 ros2 topic echo --no-daemon --once --qos-profile sensor_data --spin-time 2 --field width /livox/lidar 2>/dev/null | awk '/^[0-9]+$/ {print $1; exit}' || true)"
+  height="$(timeout 10 ros2 topic echo --no-daemon --once --qos-profile sensor_data --spin-time 2 --field height /livox/lidar 2>/dev/null | awk '/^[0-9]+$/ {print $1; exit}' || true)"
+  if [[ -n "$width" ]]; then
+    if [[ -z "$height" ]]; then
+      height=1
+    fi
     first_cloud_points=$((width * height))
     echo "[hunter_fastlio] First /livox/lidar PointCloud2 sample: ${first_cloud_points} points (${width}x${height})"
     if (( first_cloud_points < LIDAR_WARN_MIN_POINTS )); then

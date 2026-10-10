@@ -47,19 +47,19 @@ when present. Install Sophus following the FAST-LIVO2 ROS2 port you choose.
 Terminal 1:
 
 ```bash
-./run_hunter_gazebo.sh enable_d455:=true
+scripts/old/sim/run_hunter_gazebo.sh enable_d455:=true
 ```
 
 Terminal 2:
 
 ```bash
-./run_hunter_fastlivo2.sh
+scripts/sim/optional/start_fastlivo2.sh
 ```
 
 Terminal 3:
 
 ```bash
-./run_hunter_livo2_terrain_nav.sh
+scripts/old/sim/run_hunter_livo2_terrain_nav.sh
 ```
 
 The simulated D455 topics are:

@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -22,6 +23,7 @@ add_executable(terrain_nav_node src/terrain_nav_node.cpp)
 
 target_include_directories(terrain_nav_node PRIVATE
   ${EIGEN3_INCLUDE_DIRS}
+  include
 )
 
 ament_target_dependencies(terrain_nav_node
@@ -30,6 +32,7 @@ ament_target_dependencies(terrain_nav_node
   std_msgs
   geometry_msgs
   nav_msgs
+  sensor_msgs
   visualization_msgs
   tf2
   tf2_geometry_msgs
@@ -49,5 +52,11 @@ install(DIRECTORY config/
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_reverse_arc test/test_reverse_arc.cpp)
+  target_include_directories(test_reverse_arc PRIVATE include)
+endif()
 
 ament_package()

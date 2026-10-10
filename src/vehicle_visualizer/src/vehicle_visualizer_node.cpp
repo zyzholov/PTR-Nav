@@ -85,7 +85,7 @@ public:
   {
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     publish_period_sec_ = declare_parameter<double>("publish_period_sec", 0.05);
-    lifetime_sec_ = declare_parameter<double>("marker_lifetime_sec", 0.30);
+    lifetime_sec_ = declare_parameter<double>("marker_lifetime_sec", 0.0);
 
     length_ = declare_parameter<double>("vehicle.length", 0.840);
     width_ = declare_parameter<double>("vehicle.width", 0.626);
@@ -144,7 +144,8 @@ private:
     geometry_msgs::msg::Pose base = msg->pose.pose;
     base.orientation = normalizedQuaternion(base.orientation);
 
-    const std::string marker_frame = frame_id_.empty() ? msg->header.frame_id : frame_id_;
+    // Positions belong to the odometry frame, not a relabelled parameter frame.
+    const std::string marker_frame = msg->header.frame_id;
     const rclcpp::Time stamp = msg->header.stamp.sec == 0 && msg->header.stamp.nanosec == 0
                                  ? now
                                  : rclcpp::Time(msg->header.stamp);

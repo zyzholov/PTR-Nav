@@ -42,7 +42,7 @@ CUSTOM_LIDAR_CONFIG_DIR = PACKAGE_ROOT / "assets" / "lidar_configs"
 MARS_VISUAL_Z_OFFSET = 0.035
 MARS_COLLISION_Z_OFFSET = 0.0
 MARS_SURFACE_SKIN_Z_OFFSET = -0.020
-MARS_FLAT_SPAWN_HINT = (14.0, 2.0)
+MARS_FLAT_SPAWN_HINT = (23.0, -6.0)
 MARS_ROUTE_WAYPOINTS = (
     (0.0, 0.0),
     (9.0, -1.7),
@@ -180,11 +180,41 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Hunter FAST-LIVO2 Isaac Sim sensor scene")
     parser.add_argument("--headless", action="store_true", help="Run Isaac Sim without UI")
     parser.add_argument("--duration", type=float, default=0.0, help="Seconds to run; 0 means run until Ctrl-C")
+    parser.add_argument(
+        "--debug-export-stage",
+        default="",
+        help="Optional USD path used to export the fully assembled stage before simulation starts.",
+    )
     parser.add_argument("--renderer", default="RaytracedLighting")
+    parser.add_argument(
+        "--render-quality",
+        choices=("auto", "performance", "balanced", "quality"),
+        default="auto",
+        help="DLSS mode for RTX real-time rendering. Auto uses performance headless, balanced for GUI mapping, and quality for GUI visual mode.",
+    )
     parser.add_argument("--camera-width", type=int, default=640)
     parser.add_argument("--camera-height", type=int, default=360)
     parser.add_argument("--physics-hz", type=float, default=200.0)
     parser.add_argument("--render-hz", type=float, default=10.0)
+    parser.add_argument(
+        "--physics-position-iterations",
+        type=int,
+        default=8,
+        help="Hunter TGS position solver iterations. Eight is the real-time/default fidelity balance.",
+    )
+    parser.add_argument(
+        "--physics-velocity-iterations",
+        type=int,
+        default=2,
+        help="Hunter TGS velocity solver iterations.",
+    )
+    parser.add_argument(
+        "--physics-enhanced-determinism",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable slower PhysX enhanced determinism for repeatability studies.",
+    )
+    parser.add_argument("--gravity-magnitude", type=float, default=9.81, help="World gravity magnitude in m/s^2")
     parser.add_argument("--stationary-duration", type=float, default=45.0)
     parser.add_argument(
         "--sensor-profile",
@@ -208,6 +238,12 @@ def parse_args():
             "and offroad_nav loads the community Offroad-Nav USD terrain."
         ),
     )
+    parser.add_argument(
+        "--nav-test-scenario",
+        choices=("none", "detour", "ramp", "step", "emerge", "crossing", "clearance", "clearance_guard"),
+        default="none",
+        help="Opt-in physical navigation test course in the light scene.",
+    )
     parser.add_argument("--world-size", type=float, default=DEFAULT_WORLD_SIZE, help="Meters covered by the generated project terrain")
     parser.add_argument(
         "--drive-mode",
@@ -225,11 +261,11 @@ def parse_args():
         default="rclpy",
         help="Use direct rclpy or Isaac ROS2 Bridge for /cmd_vel. rclpy is the default because it supports command timeout.",
     )
-    parser.add_argument("--cmd-vel-max-speed", type=float, default=1.20, help="Speed clamp in m/s for --drive-mode cmd_vel")
+    parser.add_argument("--cmd-vel-max-speed", type=float, default=1.33, help="Speed clamp in m/s for --drive-mode cmd_vel")
     parser.add_argument("--cmd-vel-max-yaw-rate", type=float, default=1.20, help="Yaw-rate clamp in rad/s for --drive-mode cmd_vel")
-    parser.add_argument("--cmd-vel-max-steer", type=float, default=0.55, help="Ackermann steering clamp in rad for --drive-mode cmd_vel")
+    parser.add_argument("--cmd-vel-max-steer", type=float, default=0.40, help="Ackermann inner-wheel steering clamp in rad for --drive-mode cmd_vel")
     parser.add_argument("--cmd-vel-max-steer-rate", type=float, default=8.0, help="Steering slew-rate clamp in rad/s for --drive-mode cmd_vel")
-    parser.add_argument("--cmd-vel-max-accel", type=float, default=1.80, help="Linear acceleration clamp in m/s^2 for --drive-mode cmd_vel")
+    parser.add_argument("--cmd-vel-max-accel", type=float, default=1.20, help="Linear acceleration clamp in m/s^2 for --drive-mode cmd_vel")
     parser.add_argument("--cmd-vel-max-yaw-accel", type=float, default=1.80, help="Yaw-rate acceleration clamp in rad/s^2 for --drive-mode cmd_vel")
     parser.add_argument("--cmd-vel-linear-deadband", type=float, default=0.006, help="Treat tiny |linear.x| commands below this value as zero")
     parser.add_argument("--cmd-vel-angular-deadband", type=float, default=0.010, help="Treat tiny |angular.z| commands below this value as zero")
@@ -247,27 +283,79 @@ def parse_args():
         default="velocity",
         help="Wheel joint drive backend. effort applies a Gazebo-like velocity PID torque; velocity uses Isaac PD velocity targets.",
     )
+    parser.add_argument(
+        "--powered-wheels",
+        choices=("rear", "all"),
+        default="rear",
+        help="Driven wheel set. Hunter SE has two rear traction motors; all is retained only for comparison.",
+    )
     parser.add_argument("--wheel-velocity-kp", type=float, default=14.0, help="Wheel speed error to torque gain for --wheel-drive-mode effort")
-    parser.add_argument("--wheel-motor-effort", type=float, default=140.0, help="Wheel motor torque clamp in N*m")
+    parser.add_argument("--wheel-velocity-ki", type=float, default=8.0, help="Wheel speed integral gain for --wheel-drive-mode effort")
+    parser.add_argument("--wheel-motor-effort", type=float, default=45.0, help="Driven-wheel motor torque clamp in N*m")
+    parser.add_argument(
+        "--front-wheel-torque-scale",
+        type=float,
+        default=0.25,
+        help="Front/rear motor torque ratio when --powered-wheels all is selected.",
+    )
+    parser.add_argument(
+        "--wheel-integral-decay",
+        type=float,
+        default=0.8,
+        help="PI integral leakage rate in 1/s; prevents stored wheel torque during deceleration.",
+    )
     parser.add_argument("--wheel-idle-brake-kp", type=float, default=0.0, help="Extra wheel braking gain when speed and steering commands are zero")
     parser.add_argument("--wheel-idle-brake-effort", type=float, default=0.0, help="Wheel braking effort clamp in N*m when commands are zero")
-    parser.add_argument("--wheel-velocity-damping", type=float, default=220.0, help="Isaac wheel velocity-drive damping for --wheel-drive-mode velocity")
+    parser.add_argument("--wheel-velocity-damping", type=float, default=60.0, help="Isaac driven-wheel velocity-drive damping for --wheel-drive-mode velocity")
+    parser.add_argument("--wheel-joint-friction", type=float, default=0.0, help="PhysX wheel-joint friction coefficient")
+    parser.add_argument("--wheel-rigid-linear-damping", type=float, default=0.0, help="PhysX linear damping on wheel rigid bodies")
+    parser.add_argument("--wheel-rigid-angular-damping", type=float, default=0.0, help="PhysX angular damping on wheel rigid bodies")
+    parser.add_argument(
+        "--wheel-max-angular-velocity",
+        type=float,
+        default=40.0,
+        help="Runtime PhysX wheel-joint speed limit in rad/s; overrides the URDF importer's low continuous-joint default.",
+    )
+    parser.add_argument(
+        "--suspension-drive-mode",
+        choices=("effort", "position"),
+        default="effort",
+        help="Suspension backend. effort evaluates the spring-damper force explicitly each physics step.",
+    )
+    parser.add_argument(
+        "--enable-suspension",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Import the four vertical Hunter suspension joints; disable only for drivetrain isolation tests.",
+    )
+    parser.add_argument("--suspension-position-kp", type=float, default=4800.0, help="Isaac suspension spring stiffness in N/m")
+    parser.add_argument("--suspension-position-kd", type=float, default=420.0, help="Isaac suspension damping in N*s/m")
+    parser.add_argument("--suspension-max-effort", type=float, default=1200.0, help="Suspension force clamp in N")
+    parser.add_argument("--suspension-target", type=float, default=-0.004, help="Suspension rest target in meters")
     parser.add_argument("--steering-position-kp", type=float, default=2200.0, help="Steering joint position stiffness")
     parser.add_argument("--steering-position-kd", type=float, default=220.0, help="Steering joint position damping")
     parser.add_argument("--steering-max-effort", type=float, default=1800.0, help="Steering joint effort clamp in N*m")
+    parser.add_argument("--wheel-static-friction", type=float, default=1.45, help="Hunter tire static friction coefficient")
+    parser.add_argument("--wheel-dynamic-friction", type=float, default=1.15, help="Hunter tire dynamic friction coefficient")
+    parser.add_argument(
+        "--wheel-collision-segments",
+        type=int,
+        default=0,
+        help="Replace imported wheel cylinders with convex meshes using this many radial segments; 0 keeps URDF collisions.",
+    )
     parser.add_argument("--steering-zero-snap", type=float, default=0.015, help="Snap tiny steering commands to zero radians")
-    parser.add_argument("--steering-direct-zero-hold", dest="steering_direct_zero_hold", action="store_true", default=True,
+    parser.add_argument("--steering-direct-zero-hold", dest="steering_direct_zero_hold", action="store_true", default=False,
                         help="Directly hold steering joints at zero for straight commands to prevent residual wheel angle")
     parser.add_argument("--no-steering-direct-zero-hold", dest="steering_direct_zero_hold", action="store_false",
                         help="Disable direct steering zero hold")
-    parser.add_argument("--drive-speed-feedback-kp", type=float, default=0.0, help="Body-speed feedback gain for wheel targets in physics mode")
-    parser.add_argument("--drive-yaw-feedback-kp", type=float, default=0.0, help="Body-yaw-rate feedback gain for wheel targets in physics mode")
-    parser.add_argument("--physics-root-assist", dest="physics_root_assist", action="store_true", default=True,
-                        help="Damp unrealistic chassis slip/yaw while still driving the Hunter through wheel joints")
+    parser.add_argument("--drive-speed-feedback-kp", type=float, default=1.2, help="Body-speed feedback gain for wheel targets in physics mode")
+    parser.add_argument("--drive-yaw-feedback-kp", type=float, default=2.0, help="Body-yaw-rate feedback gain for wheel targets in physics mode")
+    parser.add_argument("--physics-root-assist", dest="physics_root_assist", action="store_true", default=False,
+                        help="Enable experimental chassis velocity assistance in addition to wheel-joint drive")
     parser.add_argument("--no-physics-root-assist", dest="physics_root_assist", action="store_false",
                         help="Disable chassis slip/yaw damping and rely only on raw PhysX wheel contact")
-    parser.add_argument("--physics-root-assist-mode", choices=("strict", "damped", "contact"), default="strict",
-                        help="strict tracks commanded speed/yaw for controllable mapping; contact leaves forward motion to wheel contact; damped is intermediate")
+    parser.add_argument("--physics-root-assist-mode", choices=("strict", "damped", "contact"), default="contact",
+                        help="Experimental root assistance: contact leaves forward motion to wheel contact, damped is intermediate, strict writes target chassis velocities")
     parser.add_argument("--physics-root-assist-accel", type=float, default=3.00,
                         help="Max chassis forward-speed correction in m/s^2")
     parser.add_argument("--physics-root-assist-yaw-accel", type=float, default=5.00,
@@ -286,22 +374,24 @@ def parse_args():
                         help="Force near-zero chassis yaw rate for straight steering commands")
     parser.add_argument("--no-physics-straight-yaw-hold", dest="physics_straight_yaw_hold", action="store_false",
                         help="Disable straight-line yaw-rate clamp")
-    parser.add_argument("--physics-idle-pose-hold", dest="physics_idle_pose_hold", action="store_true", default=True,
-                        help="Hold the Hunter root pose after the vehicle has settled and commands are zero")
+    parser.add_argument("--physics-idle-pose-hold", dest="physics_idle_pose_hold", action="store_true", default=False,
+                        help="Enable an experimental parked-pose lock after commands return to zero")
     parser.add_argument("--no-physics-idle-pose-hold", dest="physics_idle_pose_hold", action="store_false",
                         help="Disable idle pose hold")
     parser.add_argument("--physics-idle-pose-hold-drift", type=float, default=0.012,
                         help="Meters of allowed idle root drift before the parked pose is restored")
     parser.add_argument("--physics-idle-pose-hold-speed", type=float, default=0.020,
                         help="Commanded speed threshold for parked pose hold")
-    parser.add_argument("--physics-terrain-sink-guard", dest="physics_terrain_sink_guard", action="store_true", default=True,
-                        help="Lift the Hunter back above Mars collision terrain if PhysX contact briefly sinks through the mesh")
+    parser.add_argument("--physics-terrain-sink-guard", dest="physics_terrain_sink_guard", action="store_true", default=False,
+                        help="Enable an emergency z-position reset if Hunter sinks through the Mars collision mesh")
     parser.add_argument("--no-physics-terrain-sink-guard", dest="physics_terrain_sink_guard", action="store_false",
                         help="Disable Mars terrain sink guard")
     parser.add_argument("--physics-terrain-min-base-clearance", type=float, default=0.235,
                         help="Minimum base_link height above Mars collision terrain before the sink guard corrects z")
     parser.add_argument("--physics-terrain-reset-base-clearance", type=float, default=0.305,
                         help="base_link height above Mars collision terrain after the sink guard corrects z")
+    parser.add_argument("--physics-rollover-stop-deg", type=float, default=45.0,
+                        help="Cut wheel drive above this absolute roll/pitch angle; <=0 disables the interlock")
     parser.add_argument(
         "--odom-topic",
         default="/isaac/ground_truth/odometry",
@@ -317,6 +407,12 @@ def parse_args():
     parser.add_argument("--physics-settle-duration", type=float, default=1.5, help="Seconds to keep wheel targets at zero while the physics model settles")
     parser.add_argument("--physics-drive-log-period", type=float, default=5.0, help="Seconds between physics drive status logs")
     parser.add_argument("--realtime", action="store_true", help="Pace the loop close to wall-clock render rate")
+    parser.add_argument(
+        "--runtime-profile-period",
+        type=float,
+        default=0.0,
+        help="Print main-loop phase timing every N simulation seconds; 0 disables profiling output.",
+    )
     parser.add_argument("--imu-topic", default="/imu/data_raw", help="Primary external IMU topic")
     parser.add_argument(
         "--legacy-imu-topic",
@@ -342,10 +438,16 @@ def parse_args():
     )
     parser.add_argument("--lidar-hz", type=float, default=10.0, help="Target LiDAR publication rate in simulation ticks")
     parser.add_argument(
+        "--lidar-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Create and publish the RTX LiDAR. Disable for isolated drivetrain tests.",
+    )
+    parser.add_argument(
         "--lidar-render-oversample",
         type=float,
-        default=1.25,
-        help="Mapping-mode RTX LiDAR render oversampling. 1.25 targets 12.5 render Hz for a 10 Hz LiDAR.",
+        default=1.0,
+        help="Mapping-mode RTX LiDAR render oversampling. Keep 1.0 for an exact 10 Hz publish rate.",
     )
     parser.add_argument("--imu-hz", type=float, default=200.0, help="Target external IMU/update rate")
     parser.add_argument("--camera-hz", type=float, default=10.0, help="Target RGB/camera_info publication rate")
@@ -360,7 +462,7 @@ def parse_args():
         "--lidar-frame-skip",
         type=int,
         default=-1,
-        help="Override LiDAR helper frameSkipCount; -1 derives it from --physics-hz and --lidar-hz.",
+        help="Override LiDAR helper frameSkipCount; -1 derives it from --render-hz and --lidar-hz.",
     )
     parser.add_argument(
         "--lidar-full-scan",
@@ -374,9 +476,26 @@ def parse_args():
     parser.add_argument("--show-lidar-debug", action="store_true")
     parser.add_argument("--robot-urdf", default=str(DEFAULT_HUNTER_URDF), help="Hunter SE URDF/xacro to import")
     parser.add_argument("--robot-z", type=float, default=0.33, help="Initial base height for the imported Hunter model")
+    parser.add_argument(
+        "--fix-robot-base",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Fix the imported Hunter base to the world for drivetrain diagnostics only.",
+    )
+    parser.add_argument(
+        "--disable-robot-collisions",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Disable every Hunter collision shape for isolated articulation diagnostics only.",
+    )
     parser.add_argument("--spawn-x", type=float, default=None, help="Initial Hunter x position. Defaults to an auto-selected flat Mars point for Mars profiles.")
     parser.add_argument("--spawn-y", type=float, default=None, help="Initial Hunter y position. Defaults to an auto-selected flat Mars point for Mars profiles.")
-    parser.add_argument("--spawn-yaw-deg", type=float, default=0.0, help="Initial Hunter yaw in degrees")
+    parser.add_argument(
+        "--spawn-yaw-deg",
+        type=float,
+        default=None,
+        help="Initial Hunter yaw in degrees. Mars auto-spawn selects a low-slope forward corridor when omitted.",
+    )
     parser.add_argument("--mars-auto-flat-spawn", dest="mars_auto_flat_spawn", action="store_true", default=True,
                         help="For Mars profiles, auto-select a locally flat spawn point unless --spawn-x/--spawn-y are given")
     parser.add_argument("--no-mars-auto-flat-spawn", dest="mars_auto_flat_spawn", action="store_false",
@@ -393,9 +512,9 @@ def parse_args():
     parser.add_argument("--no-sensor-meshes", action="store_true", help="Skip decorative Livox/D455 sensor body meshes")
     parser.add_argument(
         "--sensor-visual-detail",
-        choices=("cad", "procedural", "none"),
-        default="cad",
-        help="Sensor appearance detail. cad uses the local MID360 DAE when available; procedural uses lightweight Isaac geometry.",
+        choices=("auto", "cad", "procedural", "none"),
+        default="auto",
+        help="Sensor appearance detail. auto uses CAD in GUI and procedural geometry headless.",
     )
     parser.add_argument(
         "--livox-visual-yaw-deg",
@@ -433,6 +552,8 @@ def parse_args():
 
 
 args, _unknown = parse_args()
+if args.nav_test_scenario != "none" and args.scene_profile != "light":
+    raise ValueError("--nav-test-scenario requires --scene-profile light")
 if args.lidar_quality is None:
     args.lidar_quality = DEFAULT_MAPPING_LIDAR_QUALITY if args.sensor_profile == "mapping" else DEFAULT_VISUAL_LIDAR_QUALITY
 args.lidar_quality_label = args.lidar_quality
@@ -444,15 +565,13 @@ if args.sensor_profile == "mapping":
     args.physics_hz = max(args.physics_hz, args.imu_hz, 200.0)
     mapping_render_hz = max(args.lidar_hz, 10.0) * max(args.lidar_render_oversample, 1.0)
     args.render_hz = max(args.render_hz, mapping_render_hz)
-    args.camera_width = min(args.camera_width, 640)
-    args.camera_height = min(args.camera_height, 360)
     if args.headless:
-        if args.mars_visual_detail == "auto" or args.mars_visual_detail == "full":
+        args.camera_width = min(args.camera_width, 640)
+        args.camera_height = min(args.camera_height, 360)
+        if args.mars_visual_detail == "auto":
             args.mars_visual_detail = "fast"
-        if args.mars_surface_skin == "auto" or args.mars_surface_skin == "full":
+        if args.mars_surface_skin == "auto":
             args.mars_surface_skin = "none"
-        if args.sensor_visual_detail == "cad":
-            args.sensor_visual_detail = "procedural"
 if args.camera_enabled is None:
     args.camera_enabled = args.sensor_profile != "mapping"
 if args.lidar_full_scan is None:
@@ -461,6 +580,15 @@ if args.mars_visual_detail == "auto":
     args.mars_visual_detail = "fast" if args.headless else "full"
 if args.mars_surface_skin == "auto":
     args.mars_surface_skin = "none" if args.headless else "full"
+if args.sensor_visual_detail == "auto":
+    args.sensor_visual_detail = "procedural" if args.headless else "cad"
+if args.render_quality == "auto":
+    if args.headless:
+        args.render_quality = "performance"
+    elif args.sensor_profile == "mapping":
+        args.render_quality = "balanced"
+    else:
+        args.render_quality = "quality"
 args.physics_hz = max(args.physics_hz, args.imu_hz, 1.0)
 args.render_hz = max(args.render_hz, 1.0)
 if args.lidar_frame_skip < 0:
@@ -490,7 +618,7 @@ from isaacsim.core.api import SimulationContext
 from isaacsim.core.prims import SingleArticulation
 from isaacsim.core.utils.extensions import enable_extension
 from isaacsim.core.utils.types import ArticulationAction
-from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdLux, UsdPhysics, UsdShade
+from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade
 
 
 WORLD = "/World"
@@ -513,13 +641,27 @@ TRACK_WIDTH = 0.50
 WHEEL_RADIUS = 0.1349
 LIVOX_MOUNT_PITCH_RAD = 0.436332313
 STEERING_JOINTS = ("fr_steer_left_joint", "fr_steer_right_joint")
+SUSPENSION_JOINTS = (
+    "fr_susp_left_joint",
+    "fr_susp_right_joint",
+    "re_susp_left_joint",
+    "re_susp_right_joint",
+)
 WHEEL_JOINT_SIGNS = {
     "fr_left_joint": 1.0,
     "fr_right_joint": 1.0,
     "re_left_joint": 1.0,
     "re_right_joint": 1.0,
 }
-HUNTER_PHYSICS_DOF_NAMES = (*STEERING_JOINTS, *WHEEL_JOINT_SIGNS.keys(), "steering_whee_joint")
+WHEEL_COLLISION_SPECS = {
+    "fr_left_link": (0.1348, 0.0987, -0.0214),
+    "fr_right_link": (0.1348, 0.0987, -0.0210),
+    "re_left_link": (0.13495, 0.1540, 0.0145),
+    "re_right_link": (0.13495, 0.1540, 0.0145),
+}
+FRONT_DRIVE_JOINTS = ("fr_left_joint", "fr_right_joint")
+REAR_DRIVE_JOINTS = ("re_left_joint", "re_right_joint")
+HUNTER_PHYSICS_DOF_NAMES = (*SUSPENSION_JOINTS, *STEERING_JOINTS, *WHEEL_JOINT_SIGNS.keys(), "steering_whee_joint")
 
 
 def log(message):
@@ -622,6 +764,8 @@ def create_mars_pbr_material(stage, path, fallback_color, albedo_path, normal_pa
 
         normal = texture_shader("NormalTexture", normal_path, "raw")
         if normal:
+            normal.CreateInput("scale", Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(2.0, 2.0, 2.0, 1.0))
+            normal.CreateInput("bias", Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(-1.0, -1.0, -1.0, 0.0))
             shader.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(normal.ConnectableAPI(), "rgb")
 
         material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
@@ -683,8 +827,8 @@ def create_scene_materials(stage):
         "metal": create_preview_material(stage, "/World/Materials/BrushedMetal", (0.55, 0.56, 0.53), 0.42, metallic=0.35),
         "digital_wall": create_preview_material(stage, "/World/Materials/DigitalWall", (0.08, 0.13, 0.16), 0.65, texture_path=DIGITAL_WALL_TEXTURE),
     }
-    apply_physics_material(materials.get("sand"), static_friction=2.0, dynamic_friction=1.65, restitution=0.02)
-    apply_physics_material(materials.get("route_dust"), static_friction=2.2, dynamic_friction=1.75, restitution=0.01)
+    apply_physics_material(materials.get("sand"), static_friction=1.10, dynamic_friction=0.88, restitution=0.02)
+    apply_physics_material(materials.get("route_dust"), static_friction=1.20, dynamic_friction=0.96, restitution=0.01)
     apply_physics_material(materials.get("mars_rock"), static_friction=1.4, dynamic_friction=1.1, restitution=0.03)
     apply_physics_material(materials.get("dark_rock"), static_friction=1.6, dynamic_friction=1.25, restitution=0.02)
     apply_physics_material(materials.get("bark"), static_friction=1.3, dynamic_friction=1.0, restitution=0.02)
@@ -995,7 +1139,14 @@ def resolve_urdf_source(path):
         setup_script = REPO_ROOT / "install" / "setup.bash"
         xacro_args = []
         if source.name == "hunter_se_gazebo.xacro":
-            xacro_args.extend(("drive_mode:=hunter_joint", "enable_livox:=false", "enable_d455:=false"))
+            xacro_args.extend(
+                (
+                    "drive_mode:=hunter_joint",
+                    "enable_livox:=false",
+                    "enable_d455:=false",
+                    f"enable_suspension:={'true' if args.enable_suspension else 'false'}",
+                )
+            )
         xacro_arg_text = " ".join(shlex.quote(item) for item in xacro_args)
         command = (
             "unset PYTHONHOME PYTHONPATH; "
@@ -1318,6 +1469,7 @@ def terrain_height(x, y):
 
 _MARS_HEIGHT_GRID = None
 _SCENE_SPAWN_XY = None
+_SCENE_SPAWN_YAW_DEG = None
 
 
 def is_mars_profile():
@@ -1401,24 +1553,59 @@ def mars_terrain_patch_roughness(x, y):
 def auto_select_mars_spawn_xy():
     hint_x, hint_y = MARS_FLAT_SPAWN_HINT
     best = None
-    for ix in range(-16, 17):
-        x = hint_x + 0.50 * ix
-        for iy in range(-12, 13):
-            y = hint_y + 0.50 * iy
-            if -5.2 < x < 5.8 and -4.2 < y < 4.2:
-                continue
-            slope = mars_terrain_slope_deg(x, y)
-            roughness = mars_terrain_patch_roughness(x, y)
-            score = 10.0 * slope + 55.0 * roughness + 0.14 * ((x - hint_x) ** 2 + (y - hint_y) ** 2)
+    for (x0, y0), (x1, y1) in zip(MARS_ROUTE_WAYPOINTS, MARS_ROUTE_WAYPOINTS[1:]):
+        dx = x1 - x0
+        dy = y1 - y0
+        length = max(1e-6, math.hypot(dx, dy))
+        ux, uy = dx / length, dy / length
+        nx, ny = -uy, ux
+        sample_count = max(1, int(length / 0.5))
+        for sample_idx in range(sample_count):
+            route_distance = min(length, 0.5 * sample_idx)
+            x = x0 + route_distance * ux
+            y = y0 + route_distance * uy
+            corridor_slopes = []
+            corridor_roughness = []
+            for forward_idx in range(17):
+                forward = 0.5 * forward_idx
+                for lateral in (-0.42, 0.0, 0.42):
+                    px = x + forward * ux + lateral * nx
+                    py = y + forward * uy + lateral * ny
+                    corridor_slopes.append(mars_terrain_slope_deg(px, py))
+                    corridor_roughness.append(mars_terrain_patch_roughness(px, py))
+            max_slope = max(corridor_slopes)
+            mean_slope = sum(corridor_slopes) / len(corridor_slopes)
+            max_roughness = max(corridor_roughness)
+            hint_distance_sq = (x - hint_x) ** 2 + (y - hint_y) ** 2
+            score = 4.0 * max_slope + mean_slope + 25.0 * max_roughness + 0.12 * hint_distance_sq
             if best is None or score < best[0]:
-                best = (score, x, y, slope, roughness)
+                best = (score, x, y, max_slope, mean_slope, max_roughness)
 
     if best is None:
         return hint_x, hint_y
 
-    _score, x, y, slope, roughness = best
-    log(f"selected flat Mars spawn at ({x:.2f}, {y:.2f}) slope={slope:.2f}deg roughness={roughness:.3f}m")
+    _score, x, y, max_slope, mean_slope, max_roughness = best
+    log(
+        f"selected route-safe Mars spawn at ({x:.2f}, {y:.2f}); "
+        f"8m corridor max/mean slope={max_slope:.1f}/{mean_slope:.1f}deg, "
+        f"max roughness={max_roughness:.3f}m"
+    )
     return x, y
+
+
+def nearest_mars_route_heading_deg(x, y):
+    best = None
+    for (x0, y0), (x1, y1) in zip(MARS_ROUTE_WAYPOINTS, MARS_ROUTE_WAYPOINTS[1:]):
+        dx = x1 - x0
+        dy = y1 - y0
+        length_sq = max(1e-9, dx * dx + dy * dy)
+        t = max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / length_sq))
+        px = x0 + t * dx
+        py = y0 + t * dy
+        candidate = ((x - px) ** 2 + (y - py) ** 2, math.degrees(math.atan2(dy, dx)))
+        if best is None or candidate[0] < best[0]:
+            best = candidate
+    return 0.0 if best is None else best[1]
 
 
 def scene_spawn_xy():
@@ -1438,8 +1625,54 @@ def scene_spawn_xy():
     return _SCENE_SPAWN_XY
 
 
+def scene_spawn_yaw_deg():
+    global _SCENE_SPAWN_YAW_DEG
+    if _SCENE_SPAWN_YAW_DEG is not None:
+        return _SCENE_SPAWN_YAW_DEG
+    if args.spawn_yaw_deg is not None:
+        _SCENE_SPAWN_YAW_DEG = finite_or_zero(args.spawn_yaw_deg)
+        return _SCENE_SPAWN_YAW_DEG
+    if not is_mars_profile() or not args.mars_auto_flat_spawn:
+        _SCENE_SPAWN_YAW_DEG = 0.0
+        return _SCENE_SPAWN_YAW_DEG
+
+    spawn_x, spawn_y = scene_spawn_xy()
+    if args.spawn_x is None and args.spawn_y is None:
+        yaw_deg = nearest_mars_route_heading_deg(spawn_x, spawn_y)
+        _SCENE_SPAWN_YAW_DEG = float(yaw_deg)
+        log(f"selected Mars route-aligned spawn heading {yaw_deg:+.1f}deg")
+        return _SCENE_SPAWN_YAW_DEG
+
+    best = None
+    for yaw_deg in range(-180, 180, 15):
+        yaw = math.radians(yaw_deg)
+        slopes = []
+        heights = []
+        roughness = []
+        for step in range(1, 17):
+            distance = 0.5 * step
+            x = spawn_x + distance * math.cos(yaw)
+            y = spawn_y + distance * math.sin(yaw)
+            slopes.append(mars_terrain_slope_deg(x, y))
+            heights.append(mars_terrain_height(x, y))
+            roughness.append(mars_terrain_patch_roughness(x, y))
+        score = 3.0 * max(slopes) + sum(slopes) / len(slopes) + 18.0 * max(roughness)
+        candidate = (score, yaw_deg, max(slopes), sum(slopes) / len(slopes), heights[-1] - heights[0])
+        if best is None or candidate[0] < best[0]:
+            best = candidate
+
+    _score, yaw_deg, max_slope, mean_slope, elevation_delta = best
+    _SCENE_SPAWN_YAW_DEG = float(yaw_deg)
+    log(
+        "selected Mars spawn heading "
+        f"{yaw_deg:+d}deg (8m corridor max/mean slope={max_slope:.1f}/{mean_slope:.1f}deg, "
+        f"elevation delta={elevation_delta:+.2f}m)"
+    )
+    return _SCENE_SPAWN_YAW_DEG
+
+
 def scene_spawn_yaw_rad():
-    return math.radians(finite_or_zero(args.spawn_yaw_deg))
+    return math.radians(scene_spawn_yaw_deg())
 
 
 def mars_robot_base_z(x, y):
@@ -1473,7 +1706,7 @@ def add_heightfield_terrain(stage, path, world_size, resolution, height_fn, mate
             i2 = i0 + resolution + 1
             i3 = i2 + 1
             face_counts.extend([3, 3])
-            face_indices.extend([i0, i2, i1, i1, i2, i3])
+            face_indices.extend([i0, i1, i2, i1, i3, i2])
 
     mesh.CreatePointsAttr(points)
     mesh.CreateFaceVertexCountsAttr(face_counts)
@@ -1790,7 +2023,7 @@ def add_mars_boulder_field(stage, materials):
         ((9.8, 2.8, 0.20), 0.54, (1.10, 0.70, 0.42), (6.0, -8.0, 63.0)),
         ((13.4, -5.4, 0.28), 0.82, (1.75, 1.05, 0.48), (2.0, 18.0, 108.0)),
         ((17.2, 3.6, 0.18), 0.60, (1.25, 0.78, 0.36), (-4.0, 10.0, 151.0)),
-        ((22.0, -8.5, 0.42), 1.05, (1.85, 1.32, 0.56), (8.0, -12.0, 204.0)),
+        ((26.0, -12.0, 0.42), 1.05, (1.85, 1.32, 0.56), (8.0, -12.0, 204.0)),
         ((28.5, 6.8, 0.36), 0.90, (1.70, 1.10, 0.52), (-9.0, 7.0, 258.0)),
         ((35.5, -12.0, 0.44), 1.12, (2.05, 1.18, 0.58), (4.0, 16.0, 314.0)),
         ((44.0, 8.0, 0.30), 0.78, (1.40, 0.92, 0.46), (-6.0, -11.0, 337.0)),
@@ -2244,7 +2477,7 @@ def add_mars_collision_asset(stage, materials):
         stage,
         str(collision_prim.GetPath()),
         approximation="none",
-        contact_offset=0.030,
+        contact_offset=0.012,
         rest_offset=0.001,
     )
     try:
@@ -2269,7 +2502,17 @@ def add_project_map(stage, materials):
         use_mars_surface_skin_as_visual = args.mars_surface_skin != "none"
 
     if args.scene_profile == "light":
-        define_box(stage, "/World/Ground", (0.0, 0.0, -0.035), (45.0, 45.0, 0.03), (0.34, 0.42, 0.31), True, materials.get("grass"))
+        if args.nav_test_scenario == "ramp":
+            def ramp_height(x, _y):
+                u = clamp((x - 1.5) / 4.0)
+                return -0.02 + 0.45 * u * u * (3.0 - 2.0 * u)
+
+            add_heightfield_terrain(
+                stage, "/World/Ground", 30.0, 150, ramp_height,
+                materials.get("grass"), (0.34, 0.42, 0.31),
+            )
+        else:
+            define_box(stage, "/World/Ground", (0.0, 0.0, -0.035), (45.0, 45.0, 0.03), (0.34, 0.42, 0.31), True, materials.get("grass"))
     elif args.scene_profile == "rubicon":
         define_box(stage, "/World/StartPad", (0.0, 0.0, -0.018), (22.0, 18.0, 0.045), (0.10, 0.10, 0.095), True, materials.get("asphalt"))
         define_box(stage, "/World/StartPad/CenterLine", (0.0, 0.0, 0.012), (18.0, 0.08, 0.006), (0.92, 0.90, 0.78), False, materials.get("lane"))
@@ -2321,7 +2564,7 @@ def add_project_map(stage, materials):
             stage,
             str(map_prim.GetPath()),
             approximation=options["collision_approximation"],
-            contact_offset=0.030 if is_mars_profile() else 0.040,
+            contact_offset=0.012 if is_mars_profile() else 0.025,
             rest_offset=0.001 if is_mars_profile() else 0.003,
         )
         log(f"applied mesh collision under {map_prim.GetPath()} ({mesh_count} mesh prims)")
@@ -2329,6 +2572,54 @@ def add_project_map(stage, materials):
         add_mars_collision_asset(stage, materials)
     disable_known_bad_offroad_nav_instancers(stage)
     return map_prim
+
+
+def add_navigation_test_course(stage, materials):
+    if args.nav_test_scenario == "none":
+        return
+
+    root = "/World/NavTestCourse"
+    stage.DefinePrim(root, "Xform")
+    for index, x in enumerate((-3.0, 0.5, 8.0)):
+        if args.nav_test_scenario == "step" and x > 4.0:
+            continue
+        ground_z = 0.43 if args.nav_test_scenario == "ramp" and x > 5.5 else -0.02
+        for side in (-1, 1):
+            define_box(
+                stage, f"{root}/Landmark_{index}_{'left' if side > 0 else 'right'}",
+                (x, side * 4.5, ground_z + 0.85),
+                (0.30, 0.30, 1.70), (0.42, 0.44, 0.43), True,
+                materials.get("concrete"),
+            )
+
+    if args.nav_test_scenario == "detour":
+        define_cylinder(
+            stage, f"{root}/CenterObstacle", (3.0, 0.0, 0.88),
+            0.65, 1.80, (0.49, 0.31, 0.20), True, materials.get("dusty_wall"),
+        )
+    elif args.nav_test_scenario in ("emerge", "crossing", "clearance", "clearance_guard"):
+        moving = define_cylinder(
+            stage, f"{root}/CenterObstacle",
+            (3.0 if args.nav_test_scenario == "clearance_guard" else 5.0,
+             0.0 if args.nav_test_scenario in ("clearance", "clearance_guard") else 3.2, 0.88),
+            0.85 if args.nav_test_scenario in ("clearance", "clearance_guard") else 0.65,
+            1.80, (0.49, 0.31, 0.20), True, materials.get("dusty_wall"),
+        )
+        rigid = UsdPhysics.RigidBodyAPI.Apply(moving.GetPrim())
+        rigid.CreateRigidBodyEnabledAttr(True)
+        rigid.CreateKinematicEnabledAttr(True)
+        if args.nav_test_scenario == "clearance_guard":
+            define_cylinder(
+                stage, f"{root}/StaticGuard", (3.0, 1.75, 1.08),
+                0.45, 2.20, (0.30, 0.35, 0.42), True, materials.get("concrete"),
+            )
+    elif args.nav_test_scenario == "step":
+        define_box(
+            stage, f"{root}/HighStep", (7.0, 0.0, 0.23),
+            (6.0, 18.0, 0.50), (0.42, 0.35, 0.27), True,
+            materials.get("dusty_wall"),
+        )
+    log(f"navigation test course: {args.nav_test_scenario} (physical collisions enabled)")
 
 
 def add_project_landmarks(stage, materials):
@@ -2399,13 +2690,14 @@ def add_front_feature_sign(stage, materials):
 
 def tune_static_world_collisions(stage):
     tuning_specs = (
-        ("/World/MarsGale/CollisionPatch", 0.028, 0.001),
-        ("/World/MarsGale/Boulders", 0.050, 0.003),
-        ("/World/MarsGale/DenseObstacles", 0.060, 0.003),
-        ("/World/OffroadNav/DenseObstacles", 0.055, 0.003),
-        ("/World/SceneWalls", 0.050, 0.003),
-        ("/World/Roads", 0.026, 0.002),
-        ("/World/Ground", 0.026, 0.002),
+        ("/World/MarsGale/CollisionPatch", 0.012, 0.001),
+        ("/World/MarsGale/Boulders", 0.025, 0.002),
+        ("/World/MarsGale/DenseObstacles", 0.025, 0.002),
+        ("/World/OffroadNav/DenseObstacles", 0.025, 0.002),
+        ("/World/SceneWalls", 0.025, 0.002),
+        ("/World/Roads", 0.012, 0.001),
+        ("/World/Ground", 0.012, 0.001),
+        ("/World/NavTestCourse", 0.025, 0.002),
     )
     total = 0
     summaries = []
@@ -2431,27 +2723,44 @@ def configure_stage():
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
 
     stage.DefinePrim(WORLD, "Xform")
-    if not stage.GetPrimAtPath("/physicsScene"):
-        scene = UsdPhysics.Scene.Define(stage, Sdf.Path("/physicsScene"))
-        scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
-        scene.CreateGravityMagnitudeAttr().Set(9.81)
-        try:
+    physics_scene_path = Sdf.Path("/physicsScene")
+    physics_scene_prim = stage.GetPrimAtPath(physics_scene_path)
+    if physics_scene_prim.IsValid():
+        scene = UsdPhysics.Scene(physics_scene_prim)
+    else:
+        scene = UsdPhysics.Scene.Define(stage, physics_scene_path)
+
+    gravity_magnitude = max(0.0, float(args.gravity_magnitude))
+    scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
+    scene.CreateGravityMagnitudeAttr().Set(gravity_magnitude)
+    try:
+        physx_scene = PhysxSchema.PhysxSceneAPI.Get(stage, physics_scene_path)
+        if not physx_scene:
             physx_scene = PhysxSchema.PhysxSceneAPI.Apply(scene.GetPrim())
-            physx_scene.CreateSolverTypeAttr().Set("TGS")
-            physx_scene.CreateEnableCCDAttr().Set(True)
-            physx_scene.CreateEnableStabilizationAttr().Set(True)
-            physx_scene.CreateEnableEnhancedDeterminismAttr().Set(True)
-            physx_scene.CreateMinPositionIterationCountAttr().Set(4)
-            physx_scene.CreateMaxPositionIterationCountAttr().Set(12)
-            physx_scene.CreateMinVelocityIterationCountAttr().Set(1)
-            physx_scene.CreateMaxVelocityIterationCountAttr().Set(4)
-            physx_scene.CreateFrictionOffsetThresholdAttr().Set(0.04)
-            physx_scene.CreateFrictionCorrelationDistanceAttr().Set(0.025)
-        except Exception as exc:
-            log(f"warning: failed to configure PhysX scene tuning: {exc}")
+        physx_scene.CreateSolverTypeAttr().Set("TGS")
+        physx_scene.CreateEnableCCDAttr().Set(True)
+        physx_scene.CreateEnableStabilizationAttr().Set(True)
+        position_iterations = max(4, int(args.physics_position_iterations))
+        velocity_iterations = max(1, int(args.physics_velocity_iterations))
+        physx_scene.CreateEnableEnhancedDeterminismAttr().Set(bool(args.physics_enhanced_determinism))
+        physx_scene.CreateMinPositionIterationCountAttr().Set(4)
+        physx_scene.CreateMaxPositionIterationCountAttr().Set(position_iterations)
+        physx_scene.CreateMinVelocityIterationCountAttr().Set(1)
+        physx_scene.CreateMaxVelocityIterationCountAttr().Set(velocity_iterations)
+        physx_scene.CreateFrictionOffsetThresholdAttr().Set(0.04)
+        physx_scene.CreateFrictionCorrelationDistanceAttr().Set(0.025)
+        log(
+            "physics scene configured: "
+            f"gravity={gravity_magnitude:.3f} m/s^2, solver=TGS, CCD=on, "
+            f"position_iterations=4..{position_iterations}, velocity_iterations=1..{velocity_iterations}, "
+            f"enhanced_determinism={bool(args.physics_enhanced_determinism)}"
+        )
+    except Exception as exc:
+        log(f"warning: failed to configure PhysX scene tuning: {exc}")
 
     materials = create_scene_materials(stage)
     add_project_map(stage, materials)
+    add_navigation_test_course(stage, materials)
     add_project_landmarks(stage, materials)
     tune_static_world_collisions(stage)
 
@@ -2503,7 +2812,7 @@ def create_viewer_camera(stage):
         base_z = scene_robot_base_z(spawn_x, spawn_y)
         route_target = (32.0, -4.8, mars_terrain_height(32.0, -4.8) + 1.2)
         camera_specs = {
-            "close": (VIEW_CAMERA, (spawn_x + 3.4, spawn_y - 10.5, base_z + 7.4), (spawn_x + 0.1, spawn_y, base_z + 0.65), 24.0),
+            "close": (VIEW_CAMERA, (spawn_x - 4.5, spawn_y + 3.0, base_z + 2.6), (spawn_x + 0.1, spawn_y, base_z + 0.35), 28.0),
             "overview": (f"{WORLD}/OverviewCamera", (28.0, -40.0, mars_terrain_height(28.0, -40.0) + 34.0), route_target, 20.0),
             "top": (f"{WORLD}/TopCamera", (34.0, -8.0, mars_terrain_height(34.0, -8.0) + 48.0), route_target, 24.0),
         }
@@ -2582,15 +2891,17 @@ def add_hunter_auxiliary_colliders(stage):
     chassis_mat = stage.GetPrimAtPath("/World/Materials/HunterChassisContact")
     material = UsdShade.Material(chassis_mat) if chassis_mat else None
     collider_specs = (
-        ("body_hull", (0.045, 0.0, -0.058), (0.940, 0.600, 0.230)),
-        ("front_bumper", (0.520, 0.0, -0.102), (0.120, 0.650, 0.150)),
-        ("rear_bumper", (-0.420, 0.0, -0.108), (0.120, 0.590, 0.140)),
-        ("side_guard_left", (0.040, 0.338, -0.112), (0.760, 0.050, 0.150)),
-        ("side_guard_right", (0.040, -0.338, -0.112), (0.760, 0.050, 0.150)),
-        ("front_corner_left", (0.460, 0.330, -0.105), (0.135, 0.080, 0.145)),
-        ("front_corner_right", (0.460, -0.330, -0.105), (0.135, 0.080, 0.145)),
-        ("rear_corner_left", (-0.360, 0.315, -0.110), (0.125, 0.080, 0.135)),
-        ("rear_corner_right", (-0.360, -0.315, -0.110), (0.125, 0.080, 0.135)),
+        # The URDF already owns the underbody plate.  These raised perimeter
+        # colliders only stop trunks/walls from passing through the visual body;
+        # extending them down to the terrain causes high-centering on mesh seams.
+        ("front_bumper", (0.520, 0.0, -0.052), (0.120, 0.650, 0.100)),
+        ("rear_bumper", (-0.420, 0.0, -0.058), (0.120, 0.590, 0.100)),
+        ("side_guard_left", (0.040, 0.338, -0.062), (0.760, 0.050, 0.100)),
+        ("side_guard_right", (0.040, -0.338, -0.062), (0.760, 0.050, 0.100)),
+        ("front_corner_left", (0.460, 0.330, -0.055), (0.135, 0.080, 0.095)),
+        ("front_corner_right", (0.460, -0.330, -0.055), (0.135, 0.080, 0.095)),
+        ("rear_corner_left", (-0.360, 0.315, -0.060), (0.125, 0.080, 0.090)),
+        ("rear_corner_right", (-0.360, -0.315, -0.060), (0.125, 0.080, 0.090)),
     )
     for name, translate, scale in collider_specs:
         collider = define_box(
@@ -2603,13 +2914,70 @@ def add_hunter_auxiliary_colliders(stage):
             material,
         )
         make_invisible(collider)
-        tune_contact_surface(collider.GetPrim(), contact_offset=0.045, rest_offset=0.002)
-    log(f"added {len(collider_specs)} invisible Hunter body/bumper collision boxes under base_link")
+        tune_contact_surface(collider.GetPrim(), contact_offset=0.012, rest_offset=0.001)
+    log(f"added {len(collider_specs)} raised Hunter perimeter collision boxes under base_link")
+
+
+def replace_hunter_wheel_collisions(stage):
+    segments = int(args.wheel_collision_segments)
+    if segments <= 0:
+        return
+    segments = max(16, min(120, segments))
+    replaced = []
+    for link_name, (radius, width, center_z) in WHEEL_COLLISION_SPECS.items():
+        link_path = f"{ROBOT}/{link_name}"
+        if not stage.GetPrimAtPath(link_path):
+            continue
+        collision_root = f"{link_path}/collisions"
+        if stage.GetPrimAtPath(collision_root):
+            stage.RemovePrim(collision_root)
+        stage.DefinePrim(collision_root, "Xform")
+        mesh = UsdGeom.Mesh.Define(stage, f"{collision_root}/round_tire")
+        points = []
+        half_width = 0.5 * width
+        for axial_z in (-half_width, half_width):
+            for index in range(segments):
+                angle = 2.0 * math.pi * index / segments
+                points.append(Gf.Vec3f(radius * math.cos(angle), radius * math.sin(angle), center_z + axial_z))
+
+        face_counts = []
+        face_indices = []
+        for index in range(segments):
+            nxt = (index + 1) % segments
+            face_counts.append(4)
+            face_indices.extend((index, nxt, segments + nxt, segments + index))
+        face_counts.extend((segments, segments))
+        face_indices.extend(reversed(range(segments)))
+        face_indices.extend(segments + index for index in range(segments))
+
+        mesh.CreatePointsAttr(points)
+        mesh.CreateFaceVertexCountsAttr(face_counts)
+        mesh.CreateFaceVertexIndicesAttr(face_indices)
+        mesh.CreateSubdivisionSchemeAttr("none")
+        mesh.CreateDoubleSidedAttr(True)
+        mesh.CreateExtentAttr(
+            [
+                Gf.Vec3f(-radius, -radius, center_z - half_width),
+                Gf.Vec3f(radius, radius, center_z + half_width),
+            ]
+        )
+        apply_collision(mesh, "convexHull", contact_offset=0.014, rest_offset=0.001)
+        make_invisible(mesh)
+        replaced.append(link_name)
+    if replaced:
+        log(
+            f"replaced imported wheel collision cylinders with {segments}-segment convex tires: "
+            + ", ".join(replaced)
+        )
 
 
 def tune_hunter_mass_properties(stage):
     mass_specs = {
         "base_link": 24.73,
+        "fr_susp_left_link": 0.20,
+        "fr_susp_right_link": 0.20,
+        "re_susp_left_link": 0.20,
+        "re_susp_right_link": 0.20,
         "fr_steer_left_link": 3.149,
         "fr_left_link": 3.149,
         "fr_steer_right_link": 3.149,
@@ -2626,11 +2994,18 @@ def tune_hunter_mass_properties(stage):
         try:
             mass_api = UsdPhysics.MassAPI.Apply(prim)
             mass_api.CreateMassAttr().Set(float(mass))
+            if link_name == "base_link":
+                # The CAD-exported tensor is roughly six times smaller than a
+                # 24.73 kg, 0.86 x 0.60 x 0.20 m chassis.  That makes modest
+                # terrain contact impulses roll the vehicle like a light shell.
+                mass_api.CreateCenterOfMassAttr().Set(Gf.Vec3f(0.0374, -0.0004, -0.0771))
+                mass_api.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(0.824, 1.606, 2.266))
+                mass_api.CreatePrincipalAxesAttr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
             count += 1
         except Exception as exc:
             log(f"warning: failed to set Hunter mass for {link_name}: {exc}")
     if count:
-        log(f"authored Hunter URDF mass properties on {count} links")
+        log(f"authored Hunter mass properties on {count} links (corrected base-link inertia tensor)")
 
 
 def import_hunter_robot(stage):
@@ -2640,7 +3015,7 @@ def import_hunter_robot(stage):
     if not status:
         raise RuntimeError("failed to create Isaac URDF import config")
     import_config.merge_fixed_joints = False
-    import_config.fix_base = False
+    import_config.fix_base = bool(args.fix_robot_base)
     import_config.make_default_prim = False
     import_config.import_inertia_tensor = True
     import_config.create_physics_scene = True
@@ -2667,14 +3042,38 @@ def import_hunter_robot(stage):
     robot_pose_ops = reset_pose_ops(robot)
     spawn_x, spawn_y = scene_spawn_xy()
     robot_base_z = scene_robot_base_z(spawn_x, spawn_y)
-    set_pose_ops(robot_pose_ops, (spawn_x, spawn_y, robot_base_z), (0.0, 0.0, float(args.spawn_yaw_deg)))
-    log(f"placed Hunter base at ({spawn_x:.2f}, {spawn_y:.2f}, {robot_base_z:.3f}) using terrain-aligned spawn")
+    spawn_yaw_deg = scene_spawn_yaw_deg()
+    set_pose_ops(robot_pose_ops, (spawn_x, spawn_y, robot_base_z), (0.0, 0.0, spawn_yaw_deg))
+    log(
+        f"placed Hunter base at ({spawn_x:.2f}, {spawn_y:.2f}, {robot_base_z:.3f}) "
+        f"yaw={spawn_yaw_deg:+.1f}deg using terrain-aligned spawn "
+        f"({'fixed-base diagnostic' if args.fix_robot_base else 'floating base'})"
+    )
     log_hunter_spawn_clearance(spawn_x, spawn_y, robot_base_z)
     apply_hunter_visibility_style(stage)
     add_hunter_auxiliary_colliders(stage)
+    replace_hunter_wheel_collisions(stage)
     tune_hunter_mass_properties(stage)
     configure_hunter_contact_materials(stage)
+    log_hunter_wheel_collision_geometry(stage)
     configure_hunter_joint_drives(stage)
+    if args.disable_robot_collisions:
+        disabled_collision_count = 0
+        for prim in stage.Traverse():
+            prim_path = str(prim.GetPath())
+            if not (prim_path == ROBOT or prim_path.startswith(f"{ROBOT}/")):
+                continue
+            if not prim_has_api(prim, UsdPhysics.CollisionAPI):
+                continue
+            UsdPhysics.CollisionAPI(prim).CreateCollisionEnabledAttr().Set(False)
+            disabled_collision_count += 1
+        log(f"disabled {disabled_collision_count} Hunter collision shapes for articulation diagnostics")
+    if args.debug_export_stage:
+        export_path = Path(args.debug_export_stage).expanduser().resolve()
+        export_path.parent.mkdir(parents=True, exist_ok=True)
+        if not stage.Export(str(export_path)):
+            raise RuntimeError(f"failed to export Isaac stage to {export_path}")
+        log(f"exported assembled Isaac stage for diagnostics: {export_path}")
     return robot_pose_ops
 
 
@@ -2784,12 +3183,13 @@ def tune_rigid_body_damping_under(stage, root_path):
             continue
 
         lower_path = prim_path.lower()
+        is_wheel_body = any(name in lower_path for name in ("wheel", "fr_left", "fr_right", "re_left", "re_right"))
         if "base_link" in lower_path:
             linear_damping = 0.10
             angular_damping = 0.42
-        elif any(name in lower_path for name in ("wheel", "fr_left", "fr_right", "re_left", "re_right")):
-            linear_damping = 0.015
-            angular_damping = 0.035
+        elif is_wheel_body:
+            linear_damping = max(0.0, float(args.wheel_rigid_linear_damping))
+            angular_damping = max(0.0, float(args.wheel_rigid_angular_damping))
         else:
             linear_damping = 0.05
             angular_damping = 0.12
@@ -2804,13 +3204,31 @@ def tune_rigid_body_damping_under(stage, root_path):
                 physx_rigid, prim, "CreateAngularDampingAttr", "physxRigidBody:angularDamping", angular_damping
             ) and ok
             ok = _set_physx_rigid_float(
-                physx_rigid, prim, "CreateMaxLinearVelocityAttr", "physxRigidBody:maxLinearVelocity", 3.0
+                physx_rigid,
+                prim,
+                "CreateMaxLinearVelocityAttr",
+                "physxRigidBody:maxLinearVelocity",
+                100.0 if is_wheel_body else 3.0,
             ) and ok
             ok = _set_physx_rigid_float(
-                physx_rigid, prim, "CreateMaxAngularVelocityAttr", "physxRigidBody:maxAngularVelocity", 12.0
+                physx_rigid,
+                prim,
+                "CreateMaxAngularVelocityAttr",
+                "physxRigidBody:maxAngularVelocity",
+                # Unlike Isaac's tensor joint API (rad/s), the USD PhysX
+                # rigid-body attribute is authored in degrees/s.
+                (
+                    math.degrees(max(100.0, 2.0 * float(args.wheel_max_angular_velocity)))
+                    if is_wheel_body
+                    else math.degrees(12.0)
+                ),
             ) and ok
             ok = _set_physx_rigid_float(
-                physx_rigid, prim, "CreateMaxDepenetrationVelocityAttr", "physxRigidBody:maxDepenetrationVelocity", 1.25
+                physx_rigid,
+                prim,
+                "CreateMaxDepenetrationVelocityAttr",
+                "physxRigidBody:maxDepenetrationVelocity",
+                10.0 if is_wheel_body else 1.25,
             ) and ok
             if ok:
                 count += 1
@@ -2822,11 +3240,19 @@ def tune_rigid_body_damping_under(stage, root_path):
 def configure_hunter_contact_materials(stage):
     wheel_mat = create_preview_material(stage, "/World/Materials/HunterWheelContact", (0.012, 0.012, 0.012), 0.84)
     chassis_mat = create_preview_material(stage, "/World/Materials/HunterChassisContact", (0.28, 0.29, 0.28), 0.78)
-    apply_physics_material(wheel_mat, static_friction=3.0, dynamic_friction=2.45, restitution=0.01)
-    apply_physics_material(chassis_mat, static_friction=1.0, dynamic_friction=0.82, restitution=0.02)
+    skid_mat = create_preview_material(stage, "/World/Materials/HunterSkidPlateContact", (0.18, 0.19, 0.18), 0.82)
+    apply_physics_material(
+        wheel_mat,
+        static_friction=max(0.0, float(args.wheel_static_friction)),
+        dynamic_friction=max(0.0, float(args.wheel_dynamic_friction)),
+        restitution=0.01,
+    )
+    apply_physics_material(chassis_mat, static_friction=0.55, dynamic_friction=0.42, restitution=0.02)
+    apply_physics_material(skid_mat, static_friction=0.20, dynamic_friction=0.12, restitution=0.01)
 
     wheel_count = 0
     chassis_count = 0
+    skid_count = 0
     for prim in stage.Traverse():
         prim_path = str(prim.GetPath())
         if not (prim_path == ROBOT or prim_path.startswith(f"{ROBOT}/")):
@@ -2837,49 +3263,151 @@ def configure_hunter_contact_materials(stage):
             continue
         if any(name in lower_path for name in ("wheel", "tire", "fr_left", "fr_right", "re_left", "re_right")):
             bind_material(prim, wheel_mat)
-            tune_contact_surface(prim, contact_offset=0.036, rest_offset=0.002)
+            tune_contact_surface(prim, contact_offset=0.014, rest_offset=0.001)
             wheel_count += 1
+        elif prim_path.startswith(f"{BASE_LINK}/collisions"):
+            # A low-friction underbody plate lets the chassis slide off a ridge
+            # instead of turning wheel torque into a pitch-over impulse.
+            bind_material(prim, skid_mat)
+            tune_contact_surface(prim, contact_offset=0.008, rest_offset=0.001)
+            skid_count += 1
         else:
             bind_material(prim, chassis_mat)
-            tune_contact_surface(prim, contact_offset=0.026, rest_offset=0.002)
+            tune_contact_surface(prim, contact_offset=0.010, rest_offset=0.001)
             chassis_count += 1
     ccd_count = enable_rigid_body_ccd_under(stage, ROBOT)
     damping_count = tune_rigid_body_damping_under(stage, ROBOT)
     log(
         f"applied Hunter contact materials "
-        f"({wheel_count} wheel collision prims, {chassis_count} chassis collision prims, "
+        f"({wheel_count} wheel collision prims, {skid_count} skid-plate collision prims, "
+        f"{chassis_count} chassis collision prims, "
         f"CCD on {ccd_count} rigid links, damping on {damping_count} rigid links)"
     )
 
 
-def get_drive(stage, joint_name):
+def log_hunter_wheel_collision_geometry(stage):
+    wheel_links = tuple(name.replace("_joint", "_link") for name in WHEEL_JOINT_SIGNS)
+    axis_vectors = {
+        "X": Gf.Vec3d(1.0, 0.0, 0.0),
+        "Y": Gf.Vec3d(0.0, 1.0, 0.0),
+        "Z": Gf.Vec3d(0.0, 0.0, 1.0),
+    }
+    descriptions = []
+    for link_name in wheel_links:
+        link_prim = stage.GetPrimAtPath(f"{ROBOT}/{link_name}")
+        if not link_prim:
+            continue
+        link_transform = UsdGeom.Xformable(link_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        prototype_prefix = f"/colliders/{link_name}/"
+        for prim in stage.Traverse():
+            prim_path = str(prim.GetPath())
+            if not prim_path.startswith(prototype_prefix) or not prim.IsA(UsdGeom.Cylinder):
+                continue
+            cylinder = UsdGeom.Cylinder(prim)
+            local_axis_name = str(cylinder.GetAxisAttr().Get() or "Z").upper()
+            local_axis = axis_vectors.get(local_axis_name, axis_vectors["Z"])
+            prototype_transform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            world_axis = link_transform.TransformDir(prototype_transform.TransformDir(local_axis))
+            if world_axis.GetLength() > 1e-9:
+                world_axis.Normalize()
+            descriptions.append(
+                f"{link_name}:radius={float(cylinder.GetRadiusAttr().Get()):.4f}m,"
+                f"width={float(cylinder.GetHeightAttr().Get()):.4f}m,axis={local_axis_name}->world"
+                f"({float(world_axis[0]):+.3f},{float(world_axis[1]):+.3f},{float(world_axis[2]):+.3f})"
+            )
+    if descriptions:
+        log("Hunter runtime wheel collision geometry: " + "; ".join(descriptions))
+    else:
+        log("warning: no cylindrical Hunter wheel collision geometry found after URDF import")
+
+
+def powered_wheel_joints():
+    if args.powered_wheels == "all":
+        return tuple(WHEEL_JOINT_SIGNS)
+    return REAR_DRIVE_JOINTS
+
+
+def wheel_effort_limit(joint_name, idle_brake=False):
+    effort = float(args.wheel_idle_brake_effort) if idle_brake else float(args.wheel_motor_effort)
+    if joint_name in FRONT_DRIVE_JOINTS and args.powered_wheels == "all":
+        effort *= max(0.0, float(args.front_wheel_torque_scale))
+    return max(0.0, effort)
+
+
+def get_drive(stage, joint_name, drive_type="angular"):
     joint = stage.GetPrimAtPath(f"{ROBOT}/joints/{joint_name}")
     if not joint:
         return None
-    drive = UsdPhysics.DriveAPI.Get(joint, "angular")
+    drive = UsdPhysics.DriveAPI.Get(joint, drive_type)
     if not drive:
-        drive = UsdPhysics.DriveAPI.Apply(joint, "angular")
+        drive = UsdPhysics.DriveAPI.Apply(joint, drive_type)
     return drive
 
 
+def remove_drive(stage, joint_name, drive_type="angular"):
+    joint = stage.GetPrimAtPath(f"{ROBOT}/joints/{joint_name}")
+    if joint and UsdPhysics.DriveAPI.Get(joint, drive_type):
+        joint.RemoveAPI(UsdPhysics.DriveAPI, drive_type)
+
+
 def configure_hunter_joint_drives(stage):
+    for joint_name in SUSPENSION_JOINTS:
+        if args.suspension_drive_mode == "effort":
+            remove_drive(stage, joint_name, "linear")
+            continue
+        drive = get_drive(stage, joint_name, "linear")
+        if drive:
+            drive.GetTypeAttr().Set("force")
+            drive.GetStiffnessAttr().Set(float(args.suspension_position_kp))
+            drive.GetDampingAttr().Set(float(args.suspension_position_kd))
+            drive.GetMaxForceAttr().Set(float(args.suspension_max_effort))
+            drive.CreateTargetPositionAttr().Set(float(args.suspension_target))
     for joint_name in STEERING_JOINTS:
         drive = get_drive(stage, joint_name)
         if drive:
+            drive.GetTypeAttr().Set("force")
             drive.GetStiffnessAttr().Set(float(args.steering_position_kp))
             drive.GetDampingAttr().Set(float(args.steering_position_kd))
             drive.GetMaxForceAttr().Set(float(args.steering_max_effort))
     steering_wheel_drive = get_drive(stage, "steering_whee_joint")
     if steering_wheel_drive:
+        steering_wheel_drive.GetTypeAttr().Set("force")
         steering_wheel_drive.GetStiffnessAttr().Set(6.0)
         steering_wheel_drive.GetDampingAttr().Set(1.0)
         steering_wheel_drive.GetMaxForceAttr().Set(25.0)
+    powered_joints = set(powered_wheel_joints())
     for joint_name in WHEEL_JOINT_SIGNS:
+        joint = stage.GetPrimAtPath(f"{ROBOT}/joints/{joint_name}")
+        if joint:
+            PhysxSchema.PhysxJointAPI.Apply(joint).CreateJointFrictionAttr().Set(
+                max(0.0, float(args.wheel_joint_friction))
+            )
+        if joint_name not in powered_joints or args.wheel_drive_mode == "effort":
+            remove_drive(stage, joint_name)
+            continue
         drive = get_drive(stage, joint_name)
         if drive:
+            drive.GetTypeAttr().Set("force")
             drive.GetStiffnessAttr().Set(0.0)
             drive.GetDampingAttr().Set(float(args.wheel_velocity_damping))
-            drive.GetMaxForceAttr().Set(max(float(args.wheel_motor_effort), float(args.wheel_idle_brake_effort)))
+            drive.GetMaxForceAttr().Set(
+                max(wheel_effort_limit(joint_name), wheel_effort_limit(joint_name, idle_brake=True))
+            )
+
+    drive_descriptions = []
+    for joint_name, drive_axis in (
+        *((name, "linear") for name in SUSPENSION_JOINTS),
+        *((name, "angular") for name in STEERING_JOINTS),
+        *((name, "angular") for name in WHEEL_JOINT_SIGNS),
+    ):
+        joint = stage.GetPrimAtPath(f"{ROBOT}/joints/{joint_name}")
+        drive = UsdPhysics.DriveAPI.Get(joint, drive_axis) if joint else None
+        if drive:
+            drive_descriptions.append(f"{joint_name}={drive.GetTypeAttr().Get()}")
+        else:
+            drive_descriptions.append(f"{joint_name}=none")
+    if drive_descriptions:
+        log("Hunter USD joint drive types: " + ", ".join(drive_descriptions))
 
 
 def set_drive_target(drive, target_position=None, target_velocity=None):
@@ -3313,7 +3841,7 @@ def create_clock_and_imu_graph():
     legacy_topic = args.legacy_imu_topic.strip()
     if legacy_topic and legacy_topic.lower() != "none" and legacy_topic != args.imu_topic:
         imu_topics.append(("LegacyImuPublish", legacy_topic))
-    global IMU_PUBLISH_NODE_NAMES
+    global IMU_PUBLISH_NODE_NAMES, IMU_PUBLISH_ATTRIBUTES
     IMU_PUBLISH_NODE_NAMES = [node_name for node_name, _topic in imu_topics]
 
     create_nodes = [
@@ -3355,6 +3883,14 @@ def create_clock_and_imu_graph():
             keys.CONNECT: connections,
         },
     )
+    IMU_PUBLISH_ATTRIBUTES = [
+        (
+            og.Controller.attribute(f"/ROS_ClockImu/{node_name}.inputs:orientation"),
+            og.Controller.attribute(f"/ROS_ClockImu/{node_name}.inputs:linearAcceleration"),
+            og.Controller.attribute(f"/ROS_ClockImu/{node_name}.inputs:angularVelocity"),
+        )
+        for node_name in IMU_PUBLISH_NODE_NAMES
+    ]
     log("external IMU topics: " + ", ".join(topic for _node_name, topic in imu_topics))
 
 
@@ -3403,13 +3939,24 @@ CMD_VEL_NODE = None
 CMD_VEL_SUB = None
 ODOM_PUBLISHER = None
 ODOM_MSG_CLS = None
+NAV_OBSTACLE_PUBLISHER = None
+NAV_TEST_TRIGGER_SUB = None
+NAV_TEST_TRIGGERED = False
+NAV_OBSTACLE_MSG_CLS = None
 IMU_PUBLISH_NODE_NAMES = ["ImuPublish"]
+IMU_PUBLISH_ATTRIBUTES = []
 PHYSICS_IMU_STATE = {
     "prev_position": None,
+    "prev_quat_wxyz": None,
     "prev_linear_velocity": None,
+    "last_pose_twist": (np.zeros(3, dtype=float), np.zeros(3, dtype=float)),
+    "last_root_state": None,
     "last_drive_log_time": -1e9,
     "last_odom_publish_time": -1e9,
     "last_wheel_targets": {},
+    "wheel_integral_effort": {},
+    "last_wheel_integral_effort": {},
+    "last_suspension_efforts": {},
     "last_drive_feedback": (0.0, 0.0),
     "last_root_assist": (0.0, 0.0, 0.0),
     "idle_hold_pose": None,
@@ -3417,6 +3964,7 @@ PHYSICS_IMU_STATE = {
     "warned_steering_zero_hold": False,
     "warned_idle_pose_hold": False,
     "warned_sink_guard": False,
+    "rollover_interlocked": False,
     "warned_imu": False,
     "warned_odom": False,
 }
@@ -3456,10 +4004,13 @@ def exp_damp(value, rate, dt):
 def publish_imu_values(quat_ijkr, lin_acc, ang_vel):
     if args.visual_only:
         return
-    for node_name in IMU_PUBLISH_NODE_NAMES:
-        og.Controller.attribute(f"/ROS_ClockImu/{node_name}.inputs:orientation").set(tuple(float(v) for v in quat_ijkr))
-        og.Controller.attribute(f"/ROS_ClockImu/{node_name}.inputs:linearAcceleration").set(tuple(float(v) for v in lin_acc))
-        og.Controller.attribute(f"/ROS_ClockImu/{node_name}.inputs:angularVelocity").set(tuple(float(v) for v in ang_vel))
+    orientation = tuple(float(v) for v in quat_ijkr)
+    linear_acceleration = tuple(float(v) for v in lin_acc)
+    angular_velocity = tuple(float(v) for v in ang_vel)
+    for orientation_attr, linear_acceleration_attr, angular_velocity_attr in IMU_PUBLISH_ATTRIBUTES:
+        orientation_attr.set(orientation)
+        linear_acceleration_attr.set(linear_acceleration)
+        angular_velocity_attr.set(angular_velocity)
 
 
 def normalize_quat_wxyz(quat):
@@ -3482,12 +4033,95 @@ def quat_rotate_inverse_wxyz(quat, vector):
     return quat_rotate_wxyz(np.array([q[0], -q[1], -q[2], -q[3]], dtype=float), vector)
 
 
+def quat_rotation_matrix_wxyz(quat):
+    w, x, y, z = normalize_quat_wxyz(quat)
+    return np.array([
+        [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+        [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+        [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+    ], dtype=float)
+
+
+def quat_roll_pitch_wxyz(quat):
+    w, x, y, z = normalize_quat_wxyz(quat)
+    roll = math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+    pitch_sin = max(-1.0, min(1.0, 2.0 * (w * y - z * x)))
+    return roll, math.asin(pitch_sin)
+
+
+def articulation_root_state(articulation):
+    position, quat_wxyz = articulation.get_world_pose()
+    position = np.asarray(position, dtype=float).reshape(3)
+    quat_wxyz = normalize_quat_wxyz(quat_wxyz)
+    try:
+        root_velocities = articulation._articulation_view.get_velocities(clone=False)
+        root_velocity = np.asarray(root_velocities, dtype=float).reshape(-1, 6)[0]
+        linear_velocity = root_velocity[:3].copy()
+        angular_velocity = root_velocity[3:6].copy()
+    except Exception:
+        linear_velocity = articulation.get_linear_velocity()
+        angular_velocity = articulation.get_angular_velocity()
+        linear_velocity = (
+            np.zeros(3, dtype=float)
+            if linear_velocity is None
+            else np.asarray(linear_velocity, dtype=float).reshape(3)
+        )
+        angular_velocity = (
+            np.zeros(3, dtype=float)
+            if angular_velocity is None
+            else np.asarray(angular_velocity, dtype=float).reshape(3)
+        )
+    return position, quat_wxyz, linear_velocity, angular_velocity
+
+
+def quat_multiply_wxyz(lhs, rhs):
+    a = normalize_quat_wxyz(lhs)
+    b = normalize_quat_wxyz(rhs)
+    return np.array(
+        [
+            a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+            a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+            a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+            a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0],
+        ],
+        dtype=float,
+    )
+
+
+def quat_conjugate_wxyz(quat):
+    q = normalize_quat_wxyz(quat)
+    return np.array([q[0], -q[1], -q[2], -q[3]], dtype=float)
+
+
+def body_angular_velocity_from_pose_delta(prev_quat_wxyz, quat_wxyz, dt):
+    if prev_quat_wxyz is None:
+        return np.zeros(3, dtype=float)
+    dt = max(1e-4, float(dt))
+    prev_q = normalize_quat_wxyz(prev_quat_wxyz)
+    q = normalize_quat_wxyz(quat_wxyz)
+    if np.dot(prev_q, q) < 0.0:
+        q = -q
+    delta_q = quat_multiply_wxyz(quat_conjugate_wxyz(prev_q), q)
+    if delta_q[0] < 0.0:
+        delta_q = -delta_q
+    vec = np.asarray(delta_q[1:4], dtype=float)
+    norm = float(np.linalg.norm(vec))
+    if norm < 1e-9:
+        return np.zeros(3, dtype=float)
+    angle = 2.0 * math.atan2(norm, max(-1.0, min(1.0, float(delta_q[0]))))
+    return vec / norm * (angle / dt)
+
+
 def create_cmd_vel_subscriber():
-    global CMD_VEL_RCLPY, CMD_VEL_NODE, CMD_VEL_SUB, ODOM_PUBLISHER, ODOM_MSG_CLS, _CMD_VEL_DIRECT_WARNED
+    global CMD_VEL_RCLPY, CMD_VEL_NODE, CMD_VEL_SUB, ODOM_PUBLISHER, ODOM_MSG_CLS
+    global NAV_OBSTACLE_PUBLISHER, NAV_OBSTACLE_MSG_CLS, _CMD_VEL_DIRECT_WARNED
+    global NAV_TEST_TRIGGER_SUB, NAV_TEST_TRIGGERED
     try:
         import rclpy
         from geometry_msgs.msg import Twist
+        from geometry_msgs.msg import PoseStamped
         from nav_msgs.msg import Odometry
+        from std_msgs.msg import Bool
 
         if not rclpy.ok():
             rclpy.init(args=None)
@@ -3499,7 +4133,22 @@ def create_cmd_vel_subscriber():
         CMD_VEL_SUB = None
         ODOM_MSG_CLS = Odometry
         ODOM_PUBLISHER = node.create_publisher(Odometry, args.odom_topic, 10)
+        if args.nav_test_scenario in ("emerge", "crossing", "clearance", "clearance_guard"):
+            NAV_OBSTACLE_MSG_CLS = PoseStamped
+            NAV_OBSTACLE_PUBLISHER = node.create_publisher(
+                PoseStamped, "/isaac/nav_test_obstacle/pose", 10)
+        if args.nav_test_scenario == "clearance_guard":
+            NAV_TEST_TRIGGERED = False
+
+            def _trigger_cb(msg):
+                global NAV_TEST_TRIGGERED
+                NAV_TEST_TRIGGERED = NAV_TEST_TRIGGERED or bool(msg.data)
+
+            NAV_TEST_TRIGGER_SUB = node.create_subscription(
+                Bool, "/isaac/nav_test_trigger", _trigger_cb, 10)
         log(f"publishing measured Hunter odometry on {args.odom_topic} at up to {args.odom_publish_hz:.1f} Hz")
+        if args.drive_mode != "cmd_vel":
+            return True
         if args.cmd_vel_backend == "bridge":
             log(f"using Isaac ROS2 Bridge subscriber for {args.cmd_vel_topic}; direct rclpy is used only for odometry")
             return False
@@ -3525,11 +4174,16 @@ def create_cmd_vel_subscriber():
         CMD_VEL_SUB = None
         ODOM_PUBLISHER = None
         ODOM_MSG_CLS = None
+        NAV_OBSTACLE_PUBLISHER = None
+        NAV_OBSTACLE_MSG_CLS = None
+        NAV_TEST_TRIGGER_SUB = None
         return False
 
 
 def shutdown_cmd_vel_subscriber():
     global CMD_VEL_NODE, CMD_VEL_SUB, CMD_VEL_RCLPY, ODOM_PUBLISHER, ODOM_MSG_CLS
+    global NAV_OBSTACLE_PUBLISHER, NAV_OBSTACLE_MSG_CLS
+    global NAV_TEST_TRIGGER_SUB, NAV_TEST_TRIGGERED
     if CMD_VEL_NODE is not None:
         try:
             CMD_VEL_NODE.destroy_node()
@@ -3546,6 +4200,10 @@ def shutdown_cmd_vel_subscriber():
     CMD_VEL_RCLPY = None
     ODOM_PUBLISHER = None
     ODOM_MSG_CLS = None
+    NAV_OBSTACLE_PUBLISHER = None
+    NAV_OBSTACLE_MSG_CLS = None
+    NAV_TEST_TRIGGER_SUB = None
+    NAV_TEST_TRIGGERED = False
 
 
 def spin_cmd_vel_subscriber():
@@ -3761,16 +4419,22 @@ def wheel_targets_from_speed_yaw_rate(speed, yaw_rate):
 
 def physics_body_speed_yaw_rate(articulation):
     try:
-        _position, quat_wxyz = articulation.get_world_pose()
-        quat_wxyz = normalize_quat_wxyz(quat_wxyz)
-        linear_velocity = articulation.get_linear_velocity()
-        angular_velocity = articulation.get_angular_velocity()
-        if linear_velocity is None:
-            linear_velocity = np.zeros(3, dtype=float)
-        if angular_velocity is None:
-            angular_velocity = np.zeros(3, dtype=float)
-        body_linear = quat_rotate_inverse_wxyz(quat_wxyz, np.asarray(linear_velocity, dtype=float).reshape(3))
-        body_angular = quat_rotate_inverse_wxyz(quat_wxyz, np.asarray(angular_velocity, dtype=float).reshape(3))
+        pose_twist = PHYSICS_IMU_STATE.get("last_pose_twist")
+        if pose_twist is None:
+            _position, quat_wxyz = articulation.get_world_pose()
+            quat_wxyz = normalize_quat_wxyz(quat_wxyz)
+            linear_velocity = articulation.get_linear_velocity()
+            angular_velocity = articulation.get_angular_velocity()
+            if linear_velocity is None:
+                linear_velocity = np.zeros(3, dtype=float)
+            if angular_velocity is None:
+                angular_velocity = np.zeros(3, dtype=float)
+            body_linear = quat_rotate_inverse_wxyz(quat_wxyz, np.asarray(linear_velocity, dtype=float).reshape(3))
+            body_angular = quat_rotate_inverse_wxyz(quat_wxyz, np.asarray(angular_velocity, dtype=float).reshape(3))
+        else:
+            body_linear, body_angular = pose_twist
+            body_linear = np.asarray(body_linear, dtype=float).reshape(3)
+            body_angular = np.asarray(body_angular, dtype=float).reshape(3)
         return finite_or_zero(body_linear[0]), finite_or_zero(body_angular[2])
     except Exception:
         return 0.0, 0.0
@@ -3782,7 +4446,8 @@ def apply_hunter_root_velocity_assist(articulation, speed, steer, dt):
         return
 
     try:
-        _position, quat_wxyz = articulation.get_world_pose()
+        state = PHYSICS_IMU_STATE.get("last_root_state")
+        quat_wxyz = state[1] if state is not None else articulation.get_world_pose()[1]
         quat_wxyz = normalize_quat_wxyz(quat_wxyz)
         linear_velocity = articulation.get_linear_velocity()
         angular_velocity = articulation.get_angular_velocity()
@@ -3990,8 +4655,8 @@ def initialize_hunter_articulation(stage):
             dof_names = list(articulation.dof_names)
             missing = [name for name in HUNTER_PHYSICS_DOF_NAMES if name not in dof_names]
             try:
-                articulation.set_solver_position_iteration_count(16)
-                articulation.set_solver_velocity_iteration_count(4)
+                articulation.set_solver_position_iteration_count(max(4, int(args.physics_position_iterations)))
+                articulation.set_solver_velocity_iteration_count(max(1, int(args.physics_velocity_iterations)))
                 articulation.set_stabilization_threshold(0.001)
                 articulation.set_sleep_threshold(0.0)
             except Exception as exc:
@@ -4000,32 +4665,122 @@ def initialize_hunter_articulation(stage):
             kps = np.full(articulation.num_dof, 0.0, dtype=float)
             kds = np.full(articulation.num_dof, 0.05, dtype=float)
             max_efforts = np.full(articulation.num_dof, 40.0, dtype=float)
+            suspension_indices = []
+            controller = articulation.get_articulation_controller()
+            for joint_name in SUSPENSION_JOINTS:
+                if joint_name in dof_names:
+                    idx = articulation.get_dof_index(joint_name)
+                    controller.switch_dof_control_mode(idx, args.suspension_drive_mode)
+                    kps[idx] = 0.0 if args.suspension_drive_mode == "effort" else float(args.suspension_position_kp)
+                    kds[idx] = 0.0 if args.suspension_drive_mode == "effort" else float(args.suspension_position_kd)
+                    max_efforts[idx] = float(args.suspension_max_effort)
+                    suspension_indices.append(idx)
             for joint_name in STEERING_JOINTS:
                 if joint_name in dof_names:
                     idx = articulation.get_dof_index(joint_name)
-                    controller = articulation.get_articulation_controller()
                     controller.switch_dof_control_mode(idx, "position")
                     kps[idx] = float(args.steering_position_kp)
                     kds[idx] = float(args.steering_position_kd)
                     max_efforts[idx] = float(args.steering_max_effort)
             if "steering_whee_joint" in dof_names:
                 idx = articulation.get_dof_index("steering_whee_joint")
-                controller = articulation.get_articulation_controller()
                 controller.switch_dof_control_mode(idx, "position")
                 kps[idx] = 6.0
                 kds[idx] = 1.0
                 max_efforts[idx] = 25.0
+            powered_joints = set(powered_wheel_joints())
             for joint_name in WHEEL_JOINT_SIGNS:
                 if joint_name in dof_names:
                     idx = articulation.get_dof_index(joint_name)
-                    controller = articulation.get_articulation_controller()
-                    controller.switch_dof_control_mode(idx, args.wheel_drive_mode)
+                    is_powered = joint_name in powered_joints
+                    controller.switch_dof_control_mode(idx, args.wheel_drive_mode if is_powered else "effort")
                     kps[idx] = 0.0
-                    kds[idx] = 0.0 if args.wheel_drive_mode == "effort" else args.wheel_velocity_damping
-                    max_efforts[idx] = max(float(args.wheel_motor_effort), float(args.wheel_idle_brake_effort))
-            controller = articulation.get_articulation_controller()
+                    kds[idx] = 0.0 if (not is_powered or args.wheel_drive_mode == "effort") else args.wheel_velocity_damping
+                    max_efforts[idx] = (
+                        max(wheel_effort_limit(joint_name), wheel_effort_limit(joint_name, idle_brake=True))
+                        if is_powered
+                        else 0.0
+                    )
             controller.set_gains(kps, kds)
             controller.set_max_efforts(max_efforts)
+            runtime_max_velocities = np.asarray(
+                articulation._articulation_view.get_joint_max_velocities(), dtype=float
+            ).copy()
+            if runtime_max_velocities.ndim == 1:
+                runtime_max_velocities = runtime_max_velocities.reshape(1, -1)
+            wheel_max_angular_velocity = max(1.0, float(args.wheel_max_angular_velocity))
+            for joint_name in WHEEL_JOINT_SIGNS:
+                if joint_name in dof_names:
+                    runtime_max_velocities[0, articulation.get_dof_index(joint_name)] = wheel_max_angular_velocity
+            articulation._articulation_view.set_max_joint_velocities(runtime_max_velocities)
+            runtime_friction = np.asarray(
+                articulation._articulation_view.get_friction_coefficients(), dtype=float
+            ).copy()
+            if runtime_friction.ndim == 1:
+                runtime_friction = runtime_friction.reshape(1, -1)
+            for joint_name in WHEEL_JOINT_SIGNS:
+                if joint_name in dof_names:
+                    runtime_friction[0, articulation.get_dof_index(joint_name)] = max(
+                        0.0, float(args.wheel_joint_friction)
+                    )
+            articulation._articulation_view.set_friction_coefficients(runtime_friction)
+            try:
+                actual_kps, actual_kds = controller.get_gains()
+                actual_max_efforts = controller.get_max_efforts()
+                actual_max_velocities = articulation._articulation_view.get_joint_max_velocities()[0]
+                actual_friction = articulation._articulation_view.get_friction_coefficients()[0]
+                actual_armatures = articulation._articulation_view.get_armatures()[0]
+                wheel_drive_state = []
+                for joint_name in WHEEL_JOINT_SIGNS:
+                    if joint_name not in dof_names:
+                        continue
+                    idx = articulation.get_dof_index(joint_name)
+                    wheel_drive_state.append(
+                        f"{joint_name}:kp={float(actual_kps[idx]):.3g},kd={float(actual_kds[idx]):.3g},"
+                        f"max_effort={float(actual_max_efforts[idx]):.3g},"
+                        f"max_velocity={float(actual_max_velocities[idx]):.3g},"
+                        f"friction={float(actual_friction[idx]):.3g},"
+                        f"armature={float(actual_armatures[idx]):.3g}"
+                    )
+                log("Hunter runtime wheel DOFs: " + "; ".join(wheel_drive_state))
+            except Exception as exc:
+                log(f"warning: failed to read Hunter runtime wheel DOF properties: {exc}")
+            try:
+                mass_matrices = np.asarray(
+                    articulation._articulation_view.get_mass_matrices(), dtype=float
+                )
+                if mass_matrices.ndim != 3 or mass_matrices.shape[0] < 1:
+                    raise RuntimeError(f"unexpected mass-matrix shape {mass_matrices.shape}")
+                mass_matrix = mass_matrices[0]
+                floating_base_dofs = int(mass_matrix.shape[0] - articulation.num_dof)
+                if floating_base_dofs not in (0, 6):
+                    raise RuntimeError(
+                        f"unexpected generalized-coordinate offset {floating_base_dofs} "
+                        f"for matrix shape {mass_matrix.shape} and {articulation.num_dof} DOFs"
+                    )
+                wheel_inertias = []
+                for joint_name in WHEEL_JOINT_SIGNS:
+                    if joint_name not in dof_names:
+                        continue
+                    coordinate_index = floating_base_dofs + articulation.get_dof_index(joint_name)
+                    wheel_inertias.append(
+                        f"{joint_name}:Mii={float(mass_matrix[coordinate_index, coordinate_index]):.6g}"
+                    )
+                log(
+                    "Hunter generalized mass matrix: "
+                    f"shape={mass_matrix.shape}, base_dofs={floating_base_dofs}; "
+                    + "; ".join(wheel_inertias)
+                )
+            except Exception as exc:
+                log(f"warning: failed to read Hunter generalized mass matrix: {exc}")
+            if suspension_indices and args.suspension_drive_mode == "position":
+                articulation.apply_action(
+                    ArticulationAction(
+                        joint_positions=np.full(len(suspension_indices), float(args.suspension_target), dtype=float),
+                        joint_velocities=np.zeros(len(suspension_indices), dtype=float),
+                        joint_indices=np.asarray(suspension_indices, dtype=np.int32),
+                    )
+                )
             try:
                 articulation.set_joint_velocities(np.zeros(articulation.num_dof, dtype=float))
             except Exception as exc:
@@ -4034,11 +4789,33 @@ def initialize_hunter_articulation(stage):
             log(f"initialized Hunter physics articulation at {root_path}")
             log(
                 "Hunter wheel drive: "
-                f"mode={args.wheel_drive_mode}, kp={args.wheel_velocity_kp:.1f}, "
+                f"powered={args.powered_wheels}, mode={args.wheel_drive_mode}, kp={args.wheel_velocity_kp:.1f}, "
                 f"max_effort={args.wheel_motor_effort:.1f}, idle_brake_kp={args.wheel_idle_brake_kp:.1f}, "
-                f"idle_brake_effort={args.wheel_idle_brake_effort:.1f}, velocity_damping={args.wheel_velocity_damping:.1f}"
+                f"idle_brake_effort={args.wheel_idle_brake_effort:.1f}, "
+                f"front_torque_scale={args.front_wheel_torque_scale:.2f}, "
+                f"integral_decay={args.wheel_integral_decay:.2f}/s, velocity_damping={args.wheel_velocity_damping:.1f}"
+            )
+            log(
+                "Hunter suspension drive: "
+                f"joints={len(suspension_indices)}, mode={args.suspension_drive_mode}, "
+                f"kp={args.suspension_position_kp:.1f}N/m, "
+                f"kd={args.suspension_position_kd:.1f}N*s/m, target={args.suspension_target:+.3f}m"
             )
             log(f"Hunter articulation DOFs: {', '.join(dof_names)}")
+            try:
+                body_names = list(articulation._articulation_view.body_names)
+                body_masses = np.asarray(
+                    articulation._articulation_view.get_body_masses(), dtype=float
+                ).reshape(-1)
+                log(
+                    "Hunter articulation mass: "
+                    f"total={float(np.sum(body_masses)):.2f}kg, "
+                    + ", ".join(
+                        f"{name}={float(mass):.2f}kg" for name, mass in zip(body_names, body_masses)
+                    )
+                )
+            except Exception as exc:
+                log(f"warning: failed to read Hunter articulation body masses: {exc}")
             if missing:
                 log(f"warning: imported Hunter articulation missing expected DOFs: {', '.join(missing)}")
             return articulation
@@ -4051,12 +4828,37 @@ def initialize_hunter_articulation(stage):
     return None
 
 
-def apply_hunter_articulation_targets(articulation, speed, steer):
+def hunter_rollover_interlocked(articulation):
+    limit_deg = max(0.0, float(args.physics_rollover_stop_deg))
+    if articulation is None or limit_deg <= 0.0:
+        PHYSICS_IMU_STATE["rollover_interlocked"] = False
+        return False
+    try:
+        _position, quat_wxyz = articulation.get_world_pose()
+        roll, pitch = quat_roll_pitch_wxyz(quat_wxyz)
+        attitude_deg = max(abs(math.degrees(roll)), abs(math.degrees(pitch)))
+        interlocked = attitude_deg >= limit_deg
+        was_interlocked = bool(PHYSICS_IMU_STATE.get("rollover_interlocked", False))
+        PHYSICS_IMU_STATE["rollover_interlocked"] = interlocked
+        if interlocked and not was_interlocked:
+            log(
+                "Hunter rollover safety interlock cut wheel drive: "
+                f"roll={math.degrees(roll):+.1f}deg pitch={math.degrees(pitch):+.1f}deg"
+            )
+        return interlocked
+    except Exception:
+        return False
+
+
+def apply_hunter_articulation_targets(articulation, speed, steer, dt=None):
     if articulation is None:
         return
     dof_names = list(articulation.dof_names)
     speed = finite_or_zero(speed)
     steer = 0.0 if abs(finite_or_zero(steer)) < max(0.0, float(args.steering_zero_snap)) else finite_or_zero(steer)
+    if hunter_rollover_interlocked(articulation):
+        speed = 0.0
+        steer = 0.0
     steering_positions, wheel_velocities = ackermann_wheel_targets(speed, steer)
     target_yaw_rate = yaw_rate_from_speed_steer(speed, steer)
     if args.motion_model == "physics" and (args.drive_speed_feedback_kp > 0.0 or args.drive_yaw_feedback_kp > 0.0):
@@ -4065,6 +4867,15 @@ def apply_hunter_articulation_targets(articulation, speed, steer):
         feedback_yaw_rate = target_yaw_rate + max(0.0, args.drive_yaw_feedback_kp) * (target_yaw_rate - actual_yaw_rate)
         speed_limit = max(abs(args.cmd_vel_max_speed), abs(speed), 0.1) * 1.35
         yaw_limit = max(abs(args.cmd_vel_max_yaw_rate), abs(target_yaw_rate), 0.1) * 1.35
+        # Keep feedback bounded when a wheel is blocked by a rock or the chassis
+        # reaches its break-over limit.  Unbounded wheel targets create slip and
+        # acceleration spikes that are especially harmful to LiDAR-inertial SLAM.
+        speed_feedback_limit = 1.45 * abs(speed)
+        yaw_feedback_limit = 1.60 * abs(target_yaw_rate)
+        if speed_feedback_limit > 0.0:
+            speed_limit = min(speed_limit, speed_feedback_limit)
+        if yaw_feedback_limit > 0.0:
+            yaw_limit = min(yaw_limit, yaw_feedback_limit)
         feedback_speed = clamp_signed(feedback_speed, speed_limit)
         feedback_yaw_rate = clamp_signed(feedback_yaw_rate, yaw_limit)
         if abs(speed) < 0.015 and abs(steer) < 0.015:
@@ -4075,6 +4886,47 @@ def apply_hunter_articulation_targets(articulation, speed, steer):
     else:
         PHYSICS_IMU_STATE["last_drive_feedback"] = (finite_or_zero(speed), target_yaw_rate)
     PHYSICS_IMU_STATE["last_wheel_targets"] = dict(wheel_velocities)
+    dt = max(1e-4, float(1.0 / max(args.physics_hz, 1.0) if dt is None else dt))
+
+    effort_indices = []
+    effort_values = []
+    suspension_indices = [articulation.get_dof_index(name) for name in SUSPENSION_JOINTS if name in dof_names]
+    if suspension_indices:
+        suspension_indices_array = np.asarray(suspension_indices, dtype=np.int32)
+        if args.suspension_drive_mode == "effort":
+            suspension_positions = np.asarray(
+                articulation.get_joint_positions(joint_indices=suspension_indices_array), dtype=float
+            ).reshape(-1)
+            suspension_velocities = np.asarray(
+                articulation.get_joint_velocities(joint_indices=suspension_indices_array), dtype=float
+            ).reshape(-1)
+            suspension_efforts = (
+                float(args.suspension_position_kp) * (float(args.suspension_target) - suspension_positions)
+                - float(args.suspension_position_kd) * suspension_velocities
+            )
+            suspension_efforts = np.clip(
+                suspension_efforts,
+                -abs(float(args.suspension_max_effort)),
+                abs(float(args.suspension_max_effort)),
+            )
+            PHYSICS_IMU_STATE["last_suspension_efforts"] = {
+                name: float(value)
+                for name, value in zip(
+                    [name for name in SUSPENSION_JOINTS if name in dof_names],
+                    suspension_efforts,
+                )
+            }
+            effort_indices.extend(suspension_indices)
+            effort_values.extend(float(value) for value in suspension_efforts)
+        else:
+            PHYSICS_IMU_STATE["last_suspension_efforts"] = {}
+            articulation.apply_action(
+                ArticulationAction(
+                    joint_positions=np.full(len(suspension_indices), float(args.suspension_target), dtype=float),
+                    joint_velocities=np.zeros(len(suspension_indices), dtype=float),
+                    joint_indices=suspension_indices_array,
+                )
+            )
 
     steer_indices = []
     steer_targets = []
@@ -4104,11 +4956,14 @@ def apply_hunter_articulation_targets(articulation, speed, steer):
         )
 
     wheel_indices = []
+    wheel_names = []
     wheel_targets = []
+    powered_joints = set(powered_wheel_joints())
     for joint_name, target_velocity in wheel_velocities.items():
-        if joint_name not in dof_names:
+        if joint_name not in dof_names or joint_name not in powered_joints:
             continue
         wheel_indices.append(articulation.get_dof_index(joint_name))
+        wheel_names.append(joint_name)
         wheel_targets.append(float(target_velocity))
     if wheel_indices:
         wheel_indices_array = np.asarray(wheel_indices, dtype=np.int32)
@@ -4123,16 +4978,35 @@ def apply_hunter_articulation_targets(articulation, speed, steer):
                 current_wheel_velocities = np.zeros_like(wheel_targets_array)
             idle_brake = abs(speed) < 0.015 and abs(steer) < max(0.0, float(args.steering_zero_snap))
             effort_gain = float(args.wheel_idle_brake_kp) if idle_brake else float(args.wheel_velocity_kp)
-            effort_limit = float(args.wheel_idle_brake_effort) if idle_brake else float(args.wheel_motor_effort)
-            wheel_efforts = effort_gain * (wheel_targets_array - current_wheel_velocities)
-            wheel_efforts = np.clip(wheel_efforts, -abs(effort_limit), abs(effort_limit))
-            articulation.apply_action(
-                ArticulationAction(
-                    joint_efforts=wheel_efforts,
-                    joint_indices=wheel_indices_array,
-                )
+            effort_limits = np.asarray(
+                [wheel_effort_limit(name, idle_brake=idle_brake) for name in wheel_names], dtype=float
             )
+            wheel_errors = wheel_targets_array - current_wheel_velocities
+            integral_state = PHYSICS_IMU_STATE.setdefault("wheel_integral_effort", {})
+            integral_gain = max(0.0, float(args.wheel_velocity_ki))
+            integral_decay = max(0.0, float(args.wheel_integral_decay))
+            integral_efforts = np.zeros_like(wheel_errors)
+            for idx, (joint_name, error, effort_limit) in enumerate(zip(wheel_names, wheel_errors, effort_limits)):
+                previous = float(integral_state.get(joint_name, 0.0)) * math.exp(-integral_decay * dt)
+                if idle_brake or integral_gain <= 0.0:
+                    candidate = 0.0
+                else:
+                    candidate = clamp_signed(previous + integral_gain * float(error) * dt, effort_limit)
+                    unsaturated = effort_gain * float(error) + candidate
+                    if abs(unsaturated) > abs(effort_limit) and unsaturated * float(error) > 0.0:
+                        candidate = previous
+                integral_state[joint_name] = candidate
+                integral_efforts[idx] = candidate
+            PHYSICS_IMU_STATE["last_wheel_integral_effort"] = {
+                name: float(value) for name, value in zip(wheel_names, integral_efforts)
+            }
+            wheel_efforts = effort_gain * wheel_errors + integral_efforts
+            wheel_efforts = np.clip(wheel_efforts, -effort_limits, effort_limits)
+            effort_indices.extend(wheel_indices)
+            effort_values.extend(float(value) for value in wheel_efforts)
         else:
+            PHYSICS_IMU_STATE["wheel_integral_effort"] = {}
+            PHYSICS_IMU_STATE["last_wheel_integral_effort"] = {}
             articulation.apply_action(
                 ArticulationAction(
                     joint_velocities=wheel_targets_array,
@@ -4140,35 +5014,47 @@ def apply_hunter_articulation_targets(articulation, speed, steer):
                 )
             )
 
+    # PhysX stores one actuation-force vector per articulation. Submit all
+    # effort-controlled DOFs together so wheel commands cannot clear the
+    # suspension spring forces from the same simulation step.
+    if effort_indices:
+        articulation.apply_action(
+            ArticulationAction(
+                joint_efforts=np.asarray(effort_values, dtype=float),
+                joint_indices=np.asarray(effort_indices, dtype=np.int32),
+            )
+        )
+
 
 def update_physics_imu_from_articulation(articulation, dt):
     if articulation is None or args.visual_only:
         return
     try:
-        position, quat_wxyz = articulation.get_world_pose()
-        position = np.asarray(position, dtype=float).reshape(3)
-        quat_wxyz = normalize_quat_wxyz(quat_wxyz)
-        linear_velocity = articulation.get_linear_velocity()
-        angular_velocity = articulation.get_angular_velocity()
-        if linear_velocity is None:
-            prev_position = PHYSICS_IMU_STATE["prev_position"]
-            linear_velocity = np.zeros(3, dtype=float) if prev_position is None else (position - prev_position) / max(dt, 1e-4)
-        if angular_velocity is None:
-            angular_velocity = np.zeros(3, dtype=float)
-        linear_velocity = np.asarray(linear_velocity, dtype=float).reshape(3)
-        angular_velocity = np.asarray(angular_velocity, dtype=float).reshape(3)
+        position, quat_wxyz, linear_velocity, angular_velocity = articulation_root_state(articulation)
+        world_to_body = quat_rotation_matrix_wxyz(quat_wxyz).T
+        body_angular = world_to_body @ angular_velocity
 
         prev_linear_velocity = PHYSICS_IMU_STATE["prev_linear_velocity"]
         if prev_linear_velocity is None:
             linear_acc_world = np.zeros(3, dtype=float)
         else:
             linear_acc_world = (linear_velocity - prev_linear_velocity) / max(dt, 1e-4)
-        lin_acc_body = quat_rotate_inverse_wxyz(quat_wxyz, linear_acc_world + np.array([0.0, 0.0, 9.81], dtype=float))
-        ang_vel_body = quat_rotate_inverse_wxyz(quat_wxyz, angular_velocity)
+        lin_acc_body = world_to_body @ (linear_acc_world + np.array([0.0, 0.0, 9.81], dtype=float))
+        body_linear = world_to_body @ linear_velocity
         quat_ijkr = (quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0])
-        publish_imu_values(quat_ijkr, lin_acc_body, ang_vel_body)
+        publish_imu_values(quat_ijkr, lin_acc_body, body_angular)
         PHYSICS_IMU_STATE["prev_position"] = position
+        PHYSICS_IMU_STATE["prev_quat_wxyz"] = quat_wxyz
         PHYSICS_IMU_STATE["prev_linear_velocity"] = linear_velocity
+        PHYSICS_IMU_STATE["last_pose_twist"] = (body_linear, body_angular)
+        PHYSICS_IMU_STATE["last_root_state"] = (
+            position,
+            quat_wxyz,
+            linear_velocity,
+            angular_velocity,
+            body_linear,
+            body_angular,
+        )
         PHYSICS_IMU_STATE["warned_imu"] = False
     except Exception as exc:
         if not PHYSICS_IMU_STATE["warned_imu"]:
@@ -4186,16 +5072,13 @@ def publish_odometry_from_articulation(articulation, t):
     PHYSICS_IMU_STATE["last_odom_publish_time"] = t
 
     try:
-        position, quat_wxyz = articulation.get_world_pose()
-        quat_wxyz = normalize_quat_wxyz(quat_wxyz)
-        linear_velocity = articulation.get_linear_velocity()
-        angular_velocity = articulation.get_angular_velocity()
-        if linear_velocity is None:
-            linear_velocity = np.zeros(3, dtype=float)
-        if angular_velocity is None:
-            angular_velocity = np.zeros(3, dtype=float)
-        body_linear = quat_rotate_inverse_wxyz(quat_wxyz, np.asarray(linear_velocity, dtype=float).reshape(3))
-        body_angular = quat_rotate_inverse_wxyz(quat_wxyz, np.asarray(angular_velocity, dtype=float).reshape(3))
+        root_state = PHYSICS_IMU_STATE.get("last_root_state")
+        if root_state is None:
+            position, quat_wxyz, linear_velocity, angular_velocity = articulation_root_state(articulation)
+            body_linear = quat_rotate_inverse_wxyz(quat_wxyz, linear_velocity)
+            body_angular = quat_rotate_inverse_wxyz(quat_wxyz, angular_velocity)
+        else:
+            position, quat_wxyz, linear_velocity, angular_velocity, body_linear, body_angular = root_state
 
         msg = ODOM_MSG_CLS()
         sec = int(max(0.0, float(t)))
@@ -4224,6 +5107,21 @@ def publish_odometry_from_articulation(articulation, t):
             PHYSICS_IMU_STATE["warned_odom"] = True
 
 
+def publish_navigation_obstacle_pose(t, y, x=5.0):
+    if NAV_OBSTACLE_PUBLISHER is None or NAV_OBSTACLE_MSG_CLS is None:
+        return
+    msg = NAV_OBSTACLE_MSG_CLS()
+    sec = int(max(0.0, t))
+    msg.header.stamp.sec = sec
+    msg.header.stamp.nanosec = int((max(0.0, t) - sec) * 1e9)
+    msg.header.frame_id = "world"
+    msg.pose.position.x = x
+    msg.pose.position.y = y
+    msg.pose.position.z = 0.88
+    msg.pose.orientation.w = 1.0
+    NAV_OBSTACLE_PUBLISHER.publish(msg)
+
+
 def log_physics_drive_status(articulation, t, speed, steer):
     if articulation is None or args.drive_mode == "stationary":
         return
@@ -4231,7 +5129,8 @@ def log_physics_drive_status(articulation, t, speed, steer):
         return
     PHYSICS_IMU_STATE["last_drive_log_time"] = t
     try:
-        position, _quat = articulation.get_world_pose()
+        position, quat_wxyz = articulation.get_world_pose()
+        roll, pitch = quat_roll_pitch_wxyz(quat_wxyz)
         linear_velocity = articulation.get_linear_velocity()
         actual_speed = 0.0 if linear_velocity is None else float(np.linalg.norm(np.asarray(linear_velocity, dtype=float)[:2]))
         body_speed, body_yaw_rate = physics_body_speed_yaw_rate(articulation)
@@ -4246,7 +5145,13 @@ def log_physics_drive_status(articulation, t, speed, steer):
         wheel_summary = "wheel_vel=n/a"
         target_summary = "wheel_target=n/a"
         effort_summary = "wheel_effort=n/a"
+        solver_effort_summary = "wheel_solver_effort=n/a"
+        dynamics_bias_summary = "wheel_dynamics_bias=n/a"
+        applied_target_summary = "wheel_drive_target=n/a"
+        integral_effort_summary = "wheel_i_effort=n/a"
         steer_summary = "steer_pos=n/a"
+        suspension_summary = "susp_pos=n/a"
+        suspension_effort_summary = "susp_effort=n/a"
         if wheel_names:
             wheel_indices = np.asarray([articulation.get_dof_index(name) for name in wheel_names], dtype=np.int32)
             wheel_velocities = articulation.get_joint_velocities(joint_indices=wheel_indices)
@@ -4257,20 +5162,92 @@ def log_physics_drive_status(articulation, t, speed, steer):
                 + ", ".join(f"{name}:{float(wheel_targets.get(name, 0.0)):+.2f}" for name in wheel_names)
                 + "]"
             )
-            if args.wheel_drive_mode == "effort":
-                try:
-                    wheel_efforts = articulation.get_applied_joint_efforts(joint_indices=wheel_indices)
-                    effort_summary = (
-                        "wheel_effort=["
-                        + ", ".join(f"{name}:{float(value):+.1f}" for name, value in zip(wheel_names, wheel_efforts))
-                        + "]"
+            try:
+                wheel_efforts = articulation.get_applied_joint_efforts(joint_indices=wheel_indices)
+                effort_summary = (
+                    "wheel_effort=["
+                    + ", ".join(f"{name}:{float(value):+.1f}" for name, value in zip(wheel_names, wheel_efforts))
+                    + "]"
+                )
+            except Exception:
+                effort_summary = "wheel_effort=unavailable"
+            try:
+                measured_efforts = articulation.get_measured_joint_efforts(joint_indices=wheel_indices)
+                solver_effort_summary = (
+                    "wheel_solver_effort=["
+                    + ", ".join(
+                        f"{name}:{float(value):+.1f}" for name, value in zip(wheel_names, measured_efforts)
                     )
-                except Exception:
-                    effort_summary = "wheel_effort=unavailable"
+                    + "]"
+                )
+            except Exception:
+                solver_effort_summary = "wheel_solver_effort=unavailable"
+            try:
+                coriolis = np.asarray(
+                    articulation._articulation_view.get_coriolis_and_centrifugal_forces(), dtype=float
+                ).reshape(-1)
+                gravity = np.asarray(
+                    articulation._articulation_view.get_generalized_gravity_forces(), dtype=float
+                ).reshape(-1)
+                coordinate_offset = max(0, int(coriolis.size - articulation.num_dof))
+                dynamics_bias_summary = (
+                    "wheel_dynamics_bias=["
+                    + ", ".join(
+                        f"{name}:c={float(coriolis[coordinate_offset + idx]):+.2f},"
+                        f"g={float(gravity[coordinate_offset + idx]):+.2f}"
+                        for name, idx in zip(wheel_names, wheel_indices)
+                    )
+                    + "]"
+                )
+            except Exception:
+                dynamics_bias_summary = "wheel_dynamics_bias=unavailable"
+            try:
+                applied_action = articulation.get_articulation_controller().get_applied_action()
+                applied_velocity_targets = np.asarray(applied_action.joint_velocities, dtype=float).reshape(-1)
+                applied_target_summary = (
+                    "wheel_drive_target=["
+                    + ", ".join(
+                        f"{name}:{float(applied_velocity_targets[idx]):+.2f}"
+                        for name, idx in zip(wheel_names, wheel_indices)
+                    )
+                    + "]"
+                )
+            except Exception:
+                applied_target_summary = "wheel_drive_target=unavailable"
+            integral_efforts = PHYSICS_IMU_STATE.get("last_wheel_integral_effort", {})
+            if integral_efforts:
+                integral_effort_summary = (
+                    "wheel_i_effort=["
+                    + ", ".join(
+                        f"{name}:{float(integral_efforts.get(name, 0.0)):+.1f}" for name in wheel_names
+                    )
+                    + "]"
+                )
         if steer_names:
             steer_indices = np.asarray([articulation.get_dof_index(name) for name in steer_names], dtype=np.int32)
             steer_positions = articulation.get_joint_positions(joint_indices=steer_indices)
             steer_summary = "steer_pos=[" + ", ".join(f"{name}:{float(value):+.2f}" for name, value in zip(steer_names, steer_positions)) + "]"
+        suspension_names = [name for name in SUSPENSION_JOINTS if name in dof_names]
+        if suspension_names:
+            suspension_indices = np.asarray(
+                [articulation.get_dof_index(name) for name in suspension_names], dtype=np.int32
+            )
+            suspension_positions = articulation.get_joint_positions(joint_indices=suspension_indices)
+            suspension_summary = (
+                "susp_pos=["
+                + ", ".join(f"{name}:{float(value):+.3f}" for name, value in zip(suspension_names, suspension_positions))
+                + "]"
+            )
+            suspension_efforts = PHYSICS_IMU_STATE.get("last_suspension_efforts", {})
+            if suspension_efforts:
+                suspension_effort_summary = (
+                    "susp_effort=["
+                    + ", ".join(
+                        f"{name}:{float(suspension_efforts.get(name, 0.0)):+.0f}"
+                        for name in suspension_names
+                    )
+                    + "]"
+                )
         terrain_summary = "terrain=n/a"
         if is_mars_profile():
             ground_z = mars_terrain_height(position[0], position[1])
@@ -4288,7 +5265,11 @@ def log_physics_drive_status(articulation, t, speed, steer):
             f"assist_body_vx={assist_vx:+.3f} m/s, assist_body_vy={assist_vy:+.3f} m/s, "
             f"assist_yaw_rate={assist_yaw_rate:+.3f} rad/s, "
             f"actual_xy_speed={actual_speed:.3f} m/s, root=({position[0]:+.2f}, {position[1]:+.2f}, {position[2]:+.2f}), "
-            f"{terrain_summary}, {steer_summary}, {target_summary}, {wheel_summary}, {effort_summary}"
+            f"attitude_rp=({math.degrees(roll):+.1f}, {math.degrees(pitch):+.1f})deg, "
+            f"{terrain_summary}, {suspension_summary}, {suspension_effort_summary}, "
+            f"{steer_summary}, {target_summary}, {wheel_summary}, {effort_summary}, "
+            f"{integral_effort_summary}, {solver_effort_summary}, "
+            f"{dynamics_bias_summary}, {applied_target_summary}"
         )
     except Exception as exc:
         log(f"warning: failed to read Hunter physics status: {exc}")
@@ -4323,7 +5304,10 @@ def update_hunter_and_imu(stage, robot_pose_ops, t, dt):
 def configure_visual_settings(settings):
     high_quality = args.renderer.lower() == "pathtracing"
     ambient_occlusion = True
+    dlss_modes = {"performance": 0, "balanced": 1, "quality": 2}
     for key, value in (
+        ("/rtx/post/aa/op", 3),
+        ("/rtx/post/dlss/execMode", dlss_modes[args.render_quality]),
         ("/rtx/ambientOcclusion/enabled", ambient_occlusion),
         ("/rtx/ambientOcclusion/intensity", 0.78 if is_mars_profile() else 0.36),
         ("/rtx/ambientOcclusion/radius", 1.8 if is_mars_profile() else 1.1),
@@ -4335,6 +5319,7 @@ def configure_visual_settings(settings):
             settings.set(key, value)
         except Exception as exc:
             log(f"warning: failed to set visual setting {key}: {exc}")
+    log(f"RTX render quality: renderer={args.renderer}, DLSS={args.render_quality}, viewport={args.camera_width}x{args.camera_height}")
 
 
 def configure_lidar_profile_folders(settings):
@@ -4382,8 +5367,11 @@ def main():
     if args.visual_only:
         log("visual-only mode: skipping ROS LiDAR, D455, /clock, and IMU graphs")
     else:
-        create_lidar()
-        simulation_app.update()
+        if args.lidar_enabled:
+            create_lidar()
+            simulation_app.update()
+        else:
+            log("RTX LiDAR disabled for this run")
         if args.camera_enabled:
             create_camera(stage)
             simulation_app.update()
@@ -4391,10 +5379,11 @@ def main():
             log("D455 ROS camera topics disabled for this sensor profile")
         create_clock_and_imu_graph()
         simulation_app.update()
-        if args.drive_mode == "cmd_vel":
+        if args.motion_model == "physics":
             if not create_cmd_vel_subscriber():
-                create_cmd_vel_graph()
-                simulation_app.update()
+                if args.drive_mode == "cmd_vel":
+                    create_cmd_vel_graph()
+                    simulation_app.update()
     simulation_app.update()
     apply_hunter_visibility_style(stage)
     activate_viewer_camera(viewer_camera_path)
@@ -4405,12 +5394,29 @@ def main():
     sim_dt = 1.0 / max(args.physics_hz, 1.0)
     render_dt = 1.0 / max(args.render_hz, 1.0)
     render_every = max(1, int(round(args.physics_hz / max(args.render_hz, 1.0))))
-    simulation_context = SimulationContext(physics_dt=sim_dt, rendering_dt=render_dt, stage_units_in_meters=1.0)
+    simulation_context = SimulationContext(
+        physics_dt=sim_dt,
+        rendering_dt=render_dt,
+        stage_units_in_meters=1.0,
+        set_defaults=False,
+    )
+    physics_context = simulation_context.get_physics_context()
+    physics_context.set_gravity(-max(0.0, float(args.gravity_magnitude)))
+    physics_context.set_solver_type("TGS")
+    physics_context.enable_stablization(True)
+    physics_context.enable_ccd(True)
+    runtime_scene = UsdPhysics.Scene.Get(stage, Sdf.Path("/physicsScene"))
+    log(
+        "runtime physics context: "
+        f"gravity_direction={runtime_scene.GetGravityDirectionAttr().Get()}, "
+        f"gravity_magnitude={runtime_scene.GetGravityMagnitudeAttr().Get()}, "
+        f"physics_dt={sim_dt:.6f}s"
+    )
     simulation_context.initialize_physics()
     hunter_articulation = None
     if args.motion_model == "physics":
         hunter_articulation = initialize_hunter_articulation(stage)
-        apply_hunter_articulation_targets(hunter_articulation, 0.0, 0.0)
+        apply_hunter_articulation_targets(hunter_articulation, 0.0, 0.0, sim_dt)
     simulation_context.play()
 
     running = True
@@ -4430,7 +5436,8 @@ def main():
         if legacy_topic and legacy_topic.lower() != "none" and legacy_topic != args.imu_topic:
             imu_topics.append(legacy_topic)
         camera_status = "with D455 camera topics" if args.camera_enabled else "without D455 camera topics"
-        log("publishing /clock, /livox/lidar, " + ", ".join(imu_topics) + f" {camera_status}")
+        lidar_status = "/livox/lidar" if args.lidar_enabled else "LiDAR disabled"
+        log("publishing /clock, " + lidar_status + ", " + ", ".join(imu_topics) + f" {camera_status}")
         log(
             "sensor timing: "
             f"physics={args.physics_hz:.1f}Hz, render={args.render_hz:.1f}Hz, "
@@ -4466,12 +5473,39 @@ def main():
                 f"yaw_accel={args.physics_root_assist_yaw_accel:.2f} rad/s^2, "
                 f"lateral_damping={args.physics_root_lateral_damping:.1f} 1/s)"
             )
+            if args.physics_root_assist_mode == "strict":
+                log("warning: strict root velocity assistance is intended for control debugging and can inject nonphysical IMU acceleration; keep it disabled for FAST-LIO")
         else:
-            log("physics root assist is disabled; raw wheel contact controls chassis motion")
+            log(
+                "physics root assist is disabled; wheel contact controls chassis motion "
+                f"with speed/yaw feedback gains {args.drive_speed_feedback_kp:.2f}/{args.drive_yaw_feedback_kp:.2f}"
+            )
     else:
         log("motion model is kinematic; Hunter root pose is directly written each frame for sensor-pipeline debugging")
 
     frame = 0
+    profile_period = max(0.0, float(args.runtime_profile_period))
+    profile_totals = {
+        "control": 0.0,
+        "physics": 0.0,
+        "render": 0.0,
+        "guards": 0.0,
+        "imu": 0.0,
+        "odom": 0.0,
+        "other": 0.0,
+        "sleep": 0.0,
+    }
+    profile_frame_count = 0
+    profile_render_count = 0
+    profile_window_sim_start = 0.0
+    profile_window_wall_start = time.monotonic()
+    realtime_deadline = profile_window_wall_start
+    emerge_started_at = None
+    emerge_finished = False
+    clearance_departure_sign = None
+    nav_obstacle_x = 3.0 if args.nav_test_scenario == "clearance_guard" else 5.0
+    nav_obstacle_y = 0.0 if args.nav_test_scenario in ("clearance", "clearance_guard") else 3.2
+    last_nav_obstacle_pose_pub_time = -1e9
     try:
         while simulation_app.is_running() and running:
             wall_frame_start = time.monotonic()
@@ -4483,23 +5517,130 @@ def main():
                     speed, steer, _yaw_rate = 0.0, 0.0, 0.0
                 else:
                     speed, steer, _yaw_rate = drive_command(t, sim_dt)
-                apply_hunter_articulation_targets(hunter_articulation, speed, steer)
+                apply_hunter_articulation_targets(hunter_articulation, speed, steer, sim_dt)
             else:
                 update_hunter_and_imu(stage, robot_pose_ops, t, sim_dt)
                 speed, steer = CMD_VEL_STATE["speed"], CMD_VEL_STATE["steer"]
+            if args.nav_test_scenario in ("emerge", "crossing", "clearance", "clearance_guard"):
+                robot_forward = (
+                    float(hunter_articulation.get_world_pose()[0][0])
+                    if args.motion_model == "physics" else t
+                )
+                guard_start = args.nav_test_scenario == "clearance_guard" and NAV_TEST_TRIGGERED
+                moving_start = speed > 0.20 and robot_forward >= 1.10
+                if emerge_started_at is None and (guard_start or moving_start):
+                    emerge_started_at = t
+                    log("navigation test obstacle begins entering the lane")
+                if emerge_started_at is not None and not emerge_finished:
+                    if args.nav_test_scenario == "clearance_guard":
+                        elapsed = t - emerge_started_at
+                        if elapsed < 2.0:
+                            approach = min(1.0, elapsed / 1.2)
+                            nav_obstacle_x = 3.0 - 1.3 * approach
+                            nav_obstacle_y = 1.60 * approach
+                            progress = 0.0
+                        elif elapsed < 4.0:
+                            nav_obstacle_x, nav_obstacle_y, progress = 1.7, 1.60, 0.0
+                        else:
+                            progress = min(1.0, (elapsed - 4.0) / 1.2)
+                            nav_obstacle_x = 1.7 + 1.3 * progress
+                            nav_obstacle_y = 1.60 + 2.90 * progress
+                    elif args.nav_test_scenario == "clearance":
+                        progress = min(1.0, max(0.0, (t - emerge_started_at - 3.0) / 1.2))
+                        if progress > 0.0 and clearance_departure_sign is None:
+                            robot_y = float(hunter_articulation.get_world_pose()[0][1])
+                            clearance_departure_sign = -1.0 if robot_y > 0.0 else 1.0
+                            log(f"navigation test obstacle departing opposite robot bypass y={robot_y:+.2f}")
+                        nav_obstacle_y = (clearance_departure_sign or 1.0) * 4.5 * progress
+                    else:
+                        duration = 2.4 if args.nav_test_scenario == "crossing" else 0.75
+                        progress = min(1.0, max(0.0, (t - emerge_started_at) / duration))
+                        travel = 6.4 if args.nav_test_scenario == "crossing" else 3.2
+                        nav_obstacle_y = 3.2 - travel * progress
+                    moving = stage.GetPrimAtPath("/World/NavTestCourse/CenterObstacle")
+                    UsdGeom.XformCommonAPI(moving).SetTranslate(Gf.Vec3d(nav_obstacle_x, nav_obstacle_y, 0.88))
+                    if progress >= 1.0:
+                        emerge_finished = True
+                        log("navigation test obstacle has left the lane" if args.nav_test_scenario in ("clearance", "clearance_guard")
+                            else "navigation test obstacle has crossed the lane" if args.nav_test_scenario == "crossing"
+                            else "navigation test obstacle is now blocking the lane")
+            phase_start = time.monotonic()
+            profile_totals["control"] += phase_start - wall_frame_start
             render_this_frame = (frame % render_every) == 0
-            simulation_context.step(render=render_this_frame)
+            # step(render=True) advances rendering_dt / physics_dt physics
+            # substeps in Isaac Sim. Physics is already stepped explicitly on
+            # every loop iteration here, so render separately to avoid nearly
+            # doubling simulation time whenever a frame is drawn.
+            simulation_context.step(render=False)
+            phase_end = time.monotonic()
+            profile_totals["physics"] += phase_end - phase_start
+            phase_start = phase_end
+            if render_this_frame:
+                simulation_context.render()
+                profile_render_count += 1
+            phase_end = time.monotonic()
+            profile_totals["render"] += phase_end - phase_start
+            phase_start = phase_end
             if args.motion_model == "physics":
-                apply_hunter_root_velocity_assist(hunter_articulation, speed, steer, sim_dt)
+                sample_time = (frame + 1) * sim_dt
+                if sample_time - last_nav_obstacle_pose_pub_time >= 0.05:
+                    publish_navigation_obstacle_pose(sample_time, nav_obstacle_y, nav_obstacle_x)
+                    last_nav_obstacle_pose_pub_time = sample_time
                 apply_hunter_terrain_sink_guard(hunter_articulation)
-                apply_hunter_idle_pose_hold(hunter_articulation, speed, steer, t)
+                apply_hunter_idle_pose_hold(hunter_articulation, speed, steer, sample_time)
+                phase_end = time.monotonic()
+                profile_totals["guards"] += phase_end - phase_start
+                phase_start = phase_end
                 update_physics_imu_from_articulation(hunter_articulation, sim_dt)
-                publish_odometry_from_articulation(hunter_articulation, t)
-                log_physics_drive_status(hunter_articulation, t, speed, steer)
+                phase_end = time.monotonic()
+                profile_totals["imu"] += phase_end - phase_start
+                phase_start = phase_end
+                publish_odometry_from_articulation(hunter_articulation, sample_time)
+                phase_end = time.monotonic()
+                profile_totals["odom"] += phase_end - phase_start
+                phase_start = phase_end
+                apply_hunter_root_velocity_assist(hunter_articulation, speed, steer, sim_dt)
+                log_physics_drive_status(hunter_articulation, sample_time, speed, steer)
+            phase_end = time.monotonic()
+            profile_totals["other"] += phase_end - phase_start
+            phase_start = phase_end
             if args.realtime:
-                elapsed = time.monotonic() - wall_frame_start
-                time.sleep(max(0.0, sim_dt - elapsed))
+                # A slow render must not add a full sleep to subsequent physics
+                # steps. Pace against cumulative time, with bounded catch-up.
+                realtime_deadline += sim_dt
+                now = time.monotonic()
+                if now - realtime_deadline > 0.25:
+                    realtime_deadline = now
+                delay = realtime_deadline - now
+                if delay > 0.0:
+                    time.sleep(delay)
+            profile_totals["sleep"] += time.monotonic() - phase_start
             frame += 1
+            profile_frame_count += 1
+            profile_sim_time = frame * sim_dt
+            if profile_period > 0.0 and profile_sim_time - profile_window_sim_start >= profile_period:
+                profile_wall_elapsed = max(1e-9, time.monotonic() - profile_window_wall_start)
+                mean_ms = {
+                    key: 1000.0 * value / max(1, profile_frame_count)
+                    for key, value in profile_totals.items()
+                }
+                render_ms = 1000.0 * profile_totals["render"] / max(1, profile_render_count)
+                work_ms = sum(mean_ms[key] for key in mean_ms if key != "sleep")
+                log(
+                    "runtime profile: "
+                    f"RTF={(profile_sim_time - profile_window_sim_start) / profile_wall_elapsed:.3f}, "
+                    f"work={work_ms:.3f}ms/step, control={mean_ms['control']:.3f}, "
+                    f"physics={mean_ms['physics']:.3f}, render={mean_ms['render']:.3f} "
+                    f"({render_ms:.3f}ms/render), guards={mean_ms['guards']:.3f}, "
+                    f"imu={mean_ms['imu']:.3f}, odom={mean_ms['odom']:.3f}, "
+                    f"other={mean_ms['other']:.3f}, sleep={mean_ms['sleep']:.3f}"
+                )
+                for key in profile_totals:
+                    profile_totals[key] = 0.0
+                profile_frame_count = 0
+                profile_render_count = 0
+                profile_window_sim_start = profile_sim_time
+                profile_window_wall_start = time.monotonic()
     finally:
         simulation_context.stop()
         shutdown_cmd_vel_subscriber()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SRC_DIR="$ROOT_DIR/src"
 RVIZ="true"
 EXTRA_ARGS=()
@@ -66,7 +66,7 @@ done
 
 if [[ $ready -ne 1 ]]; then
   echo "[hunter_fastlivo2] ERROR: timed out waiting for Gazebo LiDAR/IMU/D455 topics." >&2
-  echo "  Start Gazebo with: ./run_hunter_gazebo.sh enable_d455:=true" >&2
+  echo "  Start legacy Gazebo with: scripts/old/sim/run_hunter_gazebo.sh enable_d455:=true" >&2
   exit 1
 fi
 

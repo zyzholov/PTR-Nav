@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 if [[ -f /opt/ros/humble/setup.bash ]]; then
   source /opt/ros/humble/setup.bash
@@ -23,6 +23,7 @@ export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 LIDAR_MIN_HZ="${LIDAR_MIN_HZ:-9.0}"
 IMU_MIN_HZ="${IMU_MIN_HZ:-180.0}"
 LIDAR_WARN_MIN_POINTS="${LIDAR_WARN_MIN_POINTS:-10000}"
+MIN_REALTIME_FACTOR="${MIN_REALTIME_FACTOR:-0.80}"
 
 measure_rate() {
   local topic="$1"
@@ -53,6 +54,7 @@ qos.reliability = ReliabilityPolicy.BEST_EFFORT
 qos.durability = DurabilityPolicy.VOLATILE
 
 samples = []
+stamps = []
 point_counts = []
 point_fields = None
 point_step = None
@@ -60,6 +62,7 @@ point_step = None
 def cb(msg):
     global point_fields, point_step
     samples.append(time.monotonic())
+    stamps.append(float(msg.header.stamp.sec) + float(msg.header.stamp.nanosec) * 1.0e-9)
     if hasattr(msg, "width") and hasattr(msg, "height"):
         point_counts.append(int(msg.width) * int(msg.height))
         if point_fields is None:
@@ -78,9 +81,14 @@ if len(samples) < 2:
     print(f"no rate sample: count={len(samples)}")
     sys.exit(2)
 
-duration = samples[-1] - samples[0]
-rate = (len(samples) - 1) / duration if duration > 0.0 else 0.0
-print(f"average rate: {rate:.6f}")
+wall_duration = samples[-1] - samples[0]
+stamp_duration = stamps[-1] - stamps[0]
+wall_rate = (len(samples) - 1) / wall_duration if wall_duration > 0.0 else 0.0
+stamp_rate = (len(stamps) - 1) / stamp_duration if stamp_duration > 0.0 else 0.0
+real_time_factor = stamp_duration / wall_duration if wall_duration > 0.0 else 0.0
+print(f"average wall rate: {wall_rate:.6f}")
+print(f"average stamp rate: {stamp_rate:.6f}")
+print(f"sensor real-time factor: {real_time_factor:.6f}")
 print(f"sample count: {len(samples)}")
 if point_counts:
     point_mean = sum(point_counts) / len(point_counts)
@@ -95,15 +103,28 @@ PY
     return 1
   fi
 
-  local rate
-  rate="$(awk '/average rate:/ {rate=$3} END {print rate}' <<<"$output")"
-  if [[ -z "$rate" ]]; then
+  local wall_rate
+  local stamp_rate
+  local realtime_factor
+  wall_rate="$(awk '/average wall rate:/ {rate=$4} END {print rate}' <<<"$output")"
+  stamp_rate="$(awk '/average stamp rate:/ {rate=$4} END {print rate}' <<<"$output")"
+  realtime_factor="$(awk '/sensor real-time factor:/ {rate=$4} END {print rate}' <<<"$output")"
+  if [[ -z "$wall_rate" || -z "$stamp_rate" || -z "$realtime_factor" ]]; then
     echo "[hunter_isaac_rates] ERROR: no rate sample for $topic" >&2
     sed -n '1,12p' <<<"$output" >&2
     return 1
   fi
 
-  awk -v topic="$topic" '/sample count:/ {
+  awk -v topic="$topic" '/average wall rate:/ {
+    print "[hunter_isaac_rates] " topic " " $0
+  }
+  /average stamp rate:/ {
+    print "[hunter_isaac_rates] " topic " " $0
+  }
+  /sensor real-time factor:/ {
+    print "[hunter_isaac_rates] " topic " " $0
+  }
+  /sample count:/ {
     print "[hunter_isaac_rates] " topic " " $0
   }
   /point fields:/ {
@@ -130,17 +151,32 @@ PY
     fi
   fi
 
-  awk -v topic="$topic" -v rate="$rate" -v minimum="$minimum" 'BEGIN {
+  local result=0
+  awk -v topic="$topic" -v rate="$stamp_rate" -v minimum="$minimum" 'BEGIN {
     if (rate + 0.0 < minimum + 0.0) {
-      printf("[hunter_isaac_rates] ERROR: %s rate %.3fHz is below %.3fHz\n", topic, rate, minimum) > "/dev/stderr";
+      printf("[hunter_isaac_rates] ERROR: %s timestamp rate %.3fHz is below %.3fHz\n", topic, rate, minimum) > "/dev/stderr";
       exit 1;
     }
-    printf("[hunter_isaac_rates] OK: %s rate %.3fHz\n", topic, rate);
-  }'
+    printf("[hunter_isaac_rates] OK: %s timestamp rate %.3fHz\n", topic, rate);
+  }' || result=1
+  awk -v topic="$topic" -v rate="$wall_rate" -v expected="$expected" -v factor="$MIN_REALTIME_FACTOR" 'BEGIN {
+    minimum = expected * factor;
+    if (rate + 0.0 < minimum) {
+      printf("[hunter_isaac_rates] ERROR: %s wall rate %.3fHz is below %.3fHz (RTF target %.2f)\n", topic, rate, minimum, factor) > "/dev/stderr";
+      exit 1;
+    }
+    printf("[hunter_isaac_rates] OK: %s wall rate %.3fHz\n", topic, rate);
+  }' || result=1
+  return "$result"
 }
 
-measure_rate "/livox/lidar" "10" "$LIDAR_MIN_HZ" 18 40
-measure_rate "/imu/data_raw" "200" "$IMU_MIN_HZ" 10 400
-measure_rate "/livox/imu" "200" "$IMU_MIN_HZ" 10 400
+status=0
+measure_rate "/livox/lidar" "10" "$LIDAR_MIN_HZ" 18 40 || status=1
+measure_rate "/imu/data_raw" "200" "$IMU_MIN_HZ" 10 400 || status=1
+measure_rate "/livox/imu" "200" "$IMU_MIN_HZ" 10 400 || status=1
 
-echo "[hunter_isaac_rates] OK: Isaac LiDAR/IMU rates are within thresholds"
+if [[ "$status" -ne 0 ]]; then
+  echo "[hunter_isaac_rates] ERROR: one or more Isaac sensor checks failed" >&2
+  exit "$status"
+fi
+echo "[hunter_isaac_rates] OK: Isaac LiDAR/IMU timestamp and wall rates are within thresholds"

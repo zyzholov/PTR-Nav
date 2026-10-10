@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 source /opt/ros/humble/setup.bash
 unset PYTHONHOME
@@ -29,7 +29,7 @@ if [[ -z "${RMW_IMPLEMENTATION:-}" ]]; then
   export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 fi
 
-if [[ "${CLEAN_STALE_REAL_NAV:-1}" == "1" ]]; then
+if [[ "${CLEAN_STALE_REAL_NAV:-0}" == "1" ]]; then
   pkill -f 'terrain_nav_node' >/dev/null 2>&1 || true
   pkill -f 'plan_node' >/dev/null 2>&1 || true
   pkill -f 'mpc_controller_node' >/dev/null 2>&1 || true

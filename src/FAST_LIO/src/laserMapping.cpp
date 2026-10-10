@@ -33,12 +33,17 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 #include <omp.h>
+#include <algorithm>
 #include <mutex>
 #include <math.h>
 #include <thread>
 #include <fstream>
 #include <csignal>
 #include <chrono>
+#include <cstdint>
+#include <limits>
+#include <deque>
+#include <unordered_map>
 #include <unistd.h>
 #include <Python.h>
 #include <so3_math.h>
@@ -62,6 +67,7 @@
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
+#include "dynamic_voxel_ray.hpp"
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -495,6 +501,464 @@ void map_incremental()
 
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI());
 PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
+double accumulated_map_publish_hz = 1.0;
+double accumulated_map_voxel_size = 0.30;
+double accumulated_map_effective_voxel_size = 0.30;
+int accumulated_map_max_points = 800000;
+bool accumulated_map_dense = false;
+bool dynamic_map_clear_enabled = false;
+bool dynamic_map_expand_enabled = false;
+int dynamic_map_clear_frames = 3;
+int dynamic_map_clear_max_gap_frames = 3;
+bool dynamic_map_ground_replace_enabled = false;
+int dynamic_map_ground_clear_frames = 3;
+int dynamic_map_ground_min_returns = 2;
+double dynamic_map_ground_max_span = 0.14;
+double dynamic_map_ground_search_radius = 0.24;
+double dynamic_map_ground_min_height = 0.30;
+int dynamic_map_ground_max_points = 6000;
+int dynamic_map_expand_min_seeds = 6;
+int dynamic_map_max_rays = 2500;
+double dynamic_map_ray_range = 30.0;
+double dynamic_map_endpoint_margin = 0.65;
+uint32_t accumulated_frame = 0;
+
+struct AccumulatedVoxel
+{
+    PointType point;
+    uint32_t hit_frame = 0;
+    uint32_t ground_free_frame = 0;
+    dynamic_voxel_ray::EvidenceWindow free_evidence;
+    uint8_t ground_free_scans = 0;
+};
+
+using AccumulatedVoxelKey = dynamic_voxel_ray::Key;
+std::unordered_map<AccumulatedVoxelKey, AccumulatedVoxel, dynamic_voxel_ray::Hash> accumulated_map_voxels;
+std::deque<BoxPointType> pending_dynamic_deletions;
+struct DynamicClearSeed
+{
+    AccumulatedVoxelKey key;
+    uint32_t frame;
+};
+std::deque<DynamicClearSeed> dynamic_clear_seeds;
+uint64_t dynamic_direct_cleared_total = 0;
+uint64_t dynamic_ground_cleared_total = 0;
+
+AccumulatedVoxelKey accumulated_voxel_key(const PointType &point, double voxel_size)
+{
+    const double safe_voxel_size = std::max(0.05, voxel_size);
+    return {
+        static_cast<int64_t>(std::floor(static_cast<double>(point.x) / safe_voxel_size)),
+        static_cast<int64_t>(std::floor(static_cast<double>(point.y) / safe_voxel_size)),
+        static_cast<int64_t>(std::floor(static_cast<double>(point.z) / safe_voxel_size)),
+    };
+}
+
+void insert_accumulated_point(const PointType &point)
+{
+    if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) return;
+    auto [it, inserted] = accumulated_map_voxels.try_emplace(
+        accumulated_voxel_key(point, accumulated_map_effective_voxel_size), AccumulatedVoxel{point});
+    it->second.hit_frame = accumulated_frame;
+    it->second.free_evidence.reset();
+    it->second.ground_free_scans = 0;
+}
+
+void rebuild_accumulated_voxels(double voxel_size)
+{
+    PointVector points;
+    points.reserve(accumulated_map_voxels.size());
+    for (const auto &entry : accumulated_map_voxels) points.push_back(entry.second.point);
+
+    accumulated_map_effective_voxel_size = std::max(0.05, voxel_size);
+    accumulated_map_voxels.clear();
+    dynamic_clear_seeds.clear();
+    accumulated_map_voxels.reserve(points.size());
+    for (const auto &point : points) insert_accumulated_point(point);
+}
+
+void enforce_accumulated_map_budget()
+{
+    const size_t max_points = static_cast<size_t>(std::max(0, accumulated_map_max_points));
+    if (max_points == 0 || accumulated_map_voxels.size() <= max_points) return;
+
+    double new_voxel_size = accumulated_map_effective_voxel_size;
+    for (int attempt = 0; attempt < 8 && accumulated_map_voxels.size() > max_points; ++attempt)
+    {
+        new_voxel_size *= 1.25;
+        rebuild_accumulated_voxels(new_voxel_size);
+    }
+    std::cout << "[FAST_LIO] accumulated map reached its point budget; "
+              << "publication voxel size increased to " << accumulated_map_effective_voxel_size
+              << " m (" << accumulated_map_voxels.size() << " points)" << std::endl;
+}
+
+void refresh_accumulated_map_cloud()
+{
+    pcl_wait_pub->clear();
+    pcl_wait_pub->reserve(accumulated_map_voxels.size());
+    for (const auto &entry : accumulated_map_voxels) pcl_wait_pub->push_back(entry.second.point);
+    pcl_wait_pub->width = static_cast<uint32_t>(pcl_wait_pub->size());
+    pcl_wait_pub->height = 1;
+    pcl_wait_pub->is_dense = true;
+}
+
+void accumulate_map_frame()
+{
+    if (feats_down_world->empty()) return;
+    ++accumulated_frame;
+    if (accumulated_map_dense)
+    {
+        // Keep publication detail independent of the EKF/IKD registration
+        // downsampling. These are measured, deskewed returns, not interpolated
+        // points; the accumulated voxel budget still bounds memory use.
+        for (const auto &body_point : feats_undistort->points)
+        {
+            PointType point;
+            pointBodyToWorld(&body_point, &point);
+            insert_accumulated_point(point);
+        }
+    }
+    else
+    {
+        for (const auto &point : feats_down_world->points) insert_accumulated_point(point);
+    }
+
+    if (dynamic_map_clear_enabled && dynamic_map_max_rays > 0)
+    {
+        struct GroundSpan { float low; float high; };
+        // Preserve the Isaac ground-support scale when publication voxels
+        // are finer than registration voxels.
+        const double coarse_size = std::max(0.40, 2.0 * accumulated_map_effective_voxel_size);
+        std::unordered_map<AccumulatedVoxelKey, GroundSpan, dynamic_voxel_ray::Hash> ground_cells;
+        ground_cells.reserve(feats_undistort->size());
+        for (const auto &body_point : feats_undistort->points)
+        {
+            PointType point;
+            pointBodyToWorld(&body_point, &point);
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) continue;
+            const AccumulatedVoxelKey key{
+                static_cast<int64_t>(std::floor(point.x / coarse_size)),
+                static_cast<int64_t>(std::floor(point.y / coarse_size)), 0};
+            auto [it, inserted] = ground_cells.try_emplace(key, GroundSpan{point.z, point.z});
+            if (!inserted)
+            {
+                it->second.low = std::min(it->second.low, point.z);
+                it->second.high = std::max(it->second.high, point.z);
+            }
+        }
+        const auto supported_elevated = [&](double x, double y, double z) {
+            const int64_t coarse_x = static_cast<int64_t>(std::floor(x / coarse_size));
+            const int64_t coarse_y = static_cast<int64_t>(std::floor(y / coarse_size));
+            unsigned int quadrants = 0;
+            for (int gy = -2; gy <= 2; ++gy)
+            {
+                for (int gx = -2; gx <= 2; ++gx)
+                {
+                    const auto observed = ground_cells.find({coarse_x + gx, coarse_y + gy, 0});
+                    if (observed == ground_cells.end() ||
+                        observed->second.high - observed->second.low > 0.20f ||
+                        z - observed->second.low < dynamic_map_ground_min_height) continue;
+                    quadrants |= 1u << ((gx >= 0 ? 1 : 0) + (gy >= 0 ? 2 : 0));
+                }
+            }
+            return __builtin_popcount(quadrants) >= 3;
+        };
+        const std::array<double, 3> origin = {pos_lid.x(), pos_lid.y(), pos_lid.z()};
+        const size_t stride = std::max<size_t>(1, (feats_down_world->size() + dynamic_map_max_rays - 1) /
+                                                   dynamic_map_max_rays);
+        std::vector<AccumulatedVoxelKey> erased;
+        for (size_t i = 0; i < feats_down_world->size(); i += stride)
+        {
+            const auto &point = feats_down_world->points[i];
+            const std::array<double, 3> endpoint = {point.x, point.y, point.z};
+            dynamic_voxel_ray::traverse(
+                origin, endpoint, accumulated_map_effective_voxel_size,
+                dynamic_map_ray_range, dynamic_map_endpoint_margin,
+                [&](const AccumulatedVoxelKey &key) {
+                    auto it = accumulated_map_voxels.find(key);
+                    if (it == accumulated_map_voxels.end() || it->second.hit_frame == accumulated_frame ||
+                        it->second.free_evidence.last_frame == accumulated_frame) return;
+                    const auto &old = it->second.point;
+                    if (!supported_elevated(old.x, old.y, old.z))
+                    {
+                        it->second.free_evidence.reset();
+                        return;
+                    }
+                    if (!it->second.free_evidence.observe(
+                            accumulated_frame, static_cast<uint8_t>(dynamic_map_clear_frames),
+                            static_cast<uint32_t>(dynamic_map_clear_max_gap_frames))) return;
+                    erased.push_back(key);
+                    accumulated_map_voxels.erase(it);
+                });
+        }
+        const size_t directly_cleared = erased.size();
+        std::vector<AccumulatedVoxelKey> tree_erased(erased.begin(), erased.end());
+        dynamic_direct_cleared_total += directly_cleared;
+        for (size_t i = 0; i < directly_cleared; ++i)
+            dynamic_clear_seeds.push_back({erased[i], accumulated_frame});
+        while (!dynamic_clear_seeds.empty() &&
+               accumulated_frame - dynamic_clear_seeds.front().frame > 15)
+            dynamic_clear_seeds.pop_front();
+        while (dynamic_clear_seeds.size() > 300) dynamic_clear_seeds.pop_front();
+
+        if (dynamic_map_ground_replace_enabled && dynamic_map_ground_max_points > 0)
+        {
+            struct CurrentGroundCell { float low; float high; uint16_t returns; };
+            std::unordered_map<AccumulatedVoxelKey, CurrentGroundCell, dynamic_voxel_ray::Hash> current_ground;
+            current_ground.reserve(feats_down_world->size() / 2 + 1);
+            for (const auto &point : feats_down_world->points)
+            {
+                if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) continue;
+                const auto key = accumulated_voxel_key(point, accumulated_map_effective_voxel_size);
+                const AccumulatedVoxelKey xy_key{key.x, key.y, 0};
+                auto [it, inserted] = current_ground.try_emplace(
+                    xy_key, CurrentGroundCell{point.z, point.z, 1});
+                if (!inserted)
+                {
+                    it->second.low = std::min(it->second.low, point.z);
+                    it->second.high = std::max(it->second.high, point.z);
+                    it->second.returns = static_cast<uint16_t>(std::min<int>(
+                        65535, it->second.returns + 1));
+                }
+            }
+
+            size_t ground_replace_budget = static_cast<size_t>(dynamic_map_ground_max_points);
+            const double search_radius_sq = dynamic_map_ground_search_radius * dynamic_map_ground_search_radius;
+            const int radius_cells = std::max(1, static_cast<int>(std::ceil(
+                dynamic_map_ground_search_radius / accumulated_map_effective_voxel_size)));
+            // Only inspect historical voxels above ground cells observed in this
+            // scan.  Walking the whole accumulated map here makes the mapping
+            // cost grow with session length and eventually breaks real-time use.
+            std::unordered_set<AccumulatedVoxelKey, dynamic_voxel_ray::Hash> ground_checked;
+            ground_checked.reserve(std::min<size_t>(
+                static_cast<size_t>(dynamic_map_ground_max_points) * 4 + 1,
+                current_ground.size() * static_cast<size_t>((2 * radius_cells + 1) *
+                                                             (2 * radius_cells + 1) * 4) + 1));
+            for (const auto &ground_entry : current_ground)
+            {
+                if (ground_replace_budget == 0) break;
+                const auto &ground_key = ground_entry.first;
+                const auto &observed = ground_entry.second;
+                if (observed.returns < dynamic_map_ground_min_returns ||
+                    observed.high - observed.low > dynamic_map_ground_max_span)
+                    continue;
+                const int64_t z_begin = static_cast<int64_t>(std::floor(
+                    (observed.low + dynamic_map_ground_min_height) / accumulated_map_effective_voxel_size));
+                const int64_t z_end = static_cast<int64_t>(std::ceil(
+                    (observed.low + 3.0) / accumulated_map_effective_voxel_size));
+                for (int dy = -radius_cells; dy <= radius_cells && ground_replace_budget > 0; ++dy)
+                {
+                    for (int dx = -radius_cells; dx <= radius_cells && ground_replace_budget > 0; ++dx)
+                    {
+                        const auto candidate_x = ground_key.x + dx;
+                        const auto candidate_y = ground_key.y + dy;
+                        const double gx = (candidate_x + 0.5) * accumulated_map_effective_voxel_size;
+                        const double gy = (candidate_y + 0.5) * accumulated_map_effective_voxel_size;
+                        const double ground_x = (ground_key.x + 0.5) * accumulated_map_effective_voxel_size;
+                        const double ground_y = (ground_key.y + 0.5) * accumulated_map_effective_voxel_size;
+                        if ((gx - ground_x) * (gx - ground_x) + (gy - ground_y) * (gy - ground_y) >
+                            search_radius_sq)
+                            continue;
+                        for (int64_t z = z_begin; z <= z_end && ground_replace_budget > 0; ++z)
+                        {
+                            const AccumulatedVoxelKey candidate{candidate_x, candidate_y, z};
+                            if (ground_checked.count(candidate) != 0) continue;
+                            const auto it = accumulated_map_voxels.find(candidate);
+                            if (it == accumulated_map_voxels.end()) continue;
+                            auto &old = it->second;
+                            if (old.hit_frame == accumulated_frame || old.point.z < -100.0f) continue;
+                            const double old_z = old.point.z;
+                            if (old_z - observed.low < dynamic_map_ground_min_height ||
+                                old_z - observed.low > 3.0) continue;
+                            // Mark only a valid historical candidate.  A nearby
+                            // but lower/higher terrain cell must not prevent a
+                            // later neighbor from validating the same voxel.
+                            ground_checked.insert(candidate);
+                            --ground_replace_budget;
+                            if (!old.free_evidence.observe(
+                                    accumulated_frame, static_cast<uint8_t>(dynamic_map_ground_clear_frames),
+                                    static_cast<uint32_t>(dynamic_map_clear_max_gap_frames)))
+                                continue;
+                            erased.push_back(candidate);
+                        }
+                    }
+                }
+            }
+            for (const auto &key : erased)
+            {
+                const auto it = accumulated_map_voxels.find(key);
+                if (it != accumulated_map_voxels.end()) accumulated_map_voxels.erase(it);
+            }
+        }
+
+        if (dynamic_map_expand_enabled && !dynamic_clear_seeds.empty())
+        {
+            const auto nearby_ground = [&](double x, double y, double &ground_z) {
+                const int64_t coarse_x = static_cast<int64_t>(std::floor(x / coarse_size));
+                const int64_t coarse_y = static_cast<int64_t>(std::floor(y / coarse_size));
+                double nearest_distance_sq = 1.6 * 1.6;
+                bool found = false;
+                for (int cy = -4; cy <= 4; ++cy)
+                {
+                    for (int cx = -4; cx <= 4; ++cx)
+                    {
+                        const auto observed = ground_cells.find({coarse_x + cx, coarse_y + cy, 0});
+                        if (observed == ground_cells.end() ||
+                            observed->second.high - observed->second.low > 0.20f) continue;
+                        const double dx = (coarse_x + cx + 0.5) * coarse_size - x;
+                        const double dy = (coarse_y + cy + 0.5) * coarse_size - y;
+                        const double distance_sq = dx * dx + dy * dy;
+                        if (distance_sq > nearest_distance_sq) continue;
+                        nearest_distance_sq = distance_sq;
+                        ground_z = observed->second.low;
+                        found = true;
+                    }
+                }
+                if (!found) return false;
+                int supporting_cells = 0;
+                for (int cy = -4; cy <= 4; ++cy)
+                {
+                    for (int cx = -4; cx <= 4; ++cx)
+                    {
+                        const auto observed = ground_cells.find({coarse_x + cx, coarse_y + cy, 0});
+                        if (observed == ground_cells.end() ||
+                            observed->second.high - observed->second.low > 0.20f ||
+                            std::abs(observed->second.low - ground_z) > 0.25f) continue;
+                        const double dx = (coarse_x + cx + 0.5) * coarse_size - x;
+                        const double dy = (coarse_y + cy + 0.5) * coarse_size - y;
+                        if (dx * dx + dy * dy <= 1.6 * 1.6) ++supporting_cells;
+                    }
+                }
+                return supporting_cells >= 3;
+            };
+
+            // A directly cleared voxel anchors a small historical cluster. Nearby
+            // ground need not fall in the exact old obstacle cell after it moves.
+            std::vector<DynamicClearSeed> anchors;
+            anchors.reserve(32);
+            for (auto seed = dynamic_clear_seeds.rbegin(); seed != dynamic_clear_seeds.rend(); ++seed)
+            {
+                const double sx = (seed->key.x + 0.5) * accumulated_map_effective_voxel_size;
+                const double sy = (seed->key.y + 0.5) * accumulated_map_effective_voxel_size;
+                int close_seeds = 0;
+                uint32_t first_frame = 0;
+                bool multiple_frames = false;
+                for (const auto &neighbor : dynamic_clear_seeds)
+                {
+                    if (accumulated_frame - neighbor.frame > 8) continue;
+                    const double dx = (neighbor.key.x - seed->key.x) * accumulated_map_effective_voxel_size;
+                    const double dy = (neighbor.key.y - seed->key.y) * accumulated_map_effective_voxel_size;
+                    const double dz = (neighbor.key.z - seed->key.z) * accumulated_map_effective_voxel_size;
+                    if (dx * dx + dy * dy > 1.2 * 1.2 || std::abs(dz) > 1.0) continue;
+                    ++close_seeds;
+                    if (first_frame == 0) first_frame = neighbor.frame;
+                    else if (first_frame != neighbor.frame) multiple_frames = true;
+                }
+                if (close_seeds < dynamic_map_expand_min_seeds || !multiple_frames) continue;
+                bool separated = true;
+                for (const auto &anchor : anchors)
+                {
+                    const double ax = (anchor.key.x + 0.5) * accumulated_map_effective_voxel_size;
+                    const double ay = (anchor.key.y + 0.5) * accumulated_map_effective_voxel_size;
+                    if (std::hypot(sx - ax, sy - ay) < 0.7) { separated = false; break; }
+                }
+                if (separated) anchors.push_back(*seed);
+                if (anchors.size() == 32) break;
+            }
+            const int xy_radius = static_cast<int>(std::ceil(2.0 / accumulated_map_effective_voxel_size));
+            const int z_radius = static_cast<int>(std::ceil(1.2 / accumulated_map_effective_voxel_size));
+            for (const auto &seed : anchors)
+            {
+                const double seed_x = (seed.key.x + 0.5) * accumulated_map_effective_voxel_size;
+                const double seed_y = (seed.key.y + 0.5) * accumulated_map_effective_voxel_size;
+                const double seed_z = (seed.key.z + 0.5) * accumulated_map_effective_voxel_size;
+                std::unordered_set<AccumulatedVoxelKey, dynamic_voxel_ray::Hash> candidates;
+                std::unordered_set<AccumulatedVoxelKey, dynamic_voxel_ray::Hash> cleared_neighbors;
+                for (const auto &near_seed : dynamic_clear_seeds)
+                {
+                    const double dx = (near_seed.key.x - seed.key.x) * accumulated_map_effective_voxel_size;
+                    const double dy = (near_seed.key.y - seed.key.y) * accumulated_map_effective_voxel_size;
+                    const double dz = (near_seed.key.z - seed.key.z) * accumulated_map_effective_voxel_size;
+                    if (dx * dx + dy * dy <= 4.0 && std::abs(dz) <= 1.2)
+                        cleared_neighbors.insert(near_seed.key);
+                }
+                for (int dx = -xy_radius; dx <= xy_radius; ++dx)
+                {
+                    for (int dy = -xy_radius; dy <= xy_radius; ++dy)
+                    {
+                        for (int dz = -z_radius; dz <= z_radius; ++dz)
+                        {
+                            const AccumulatedVoxelKey key{seed.key.x + dx, seed.key.y + dy, seed.key.z + dz};
+                            auto it = accumulated_map_voxels.find(key);
+                            if (it == accumulated_map_voxels.end() ||
+                                it->second.hit_frame + 2 > accumulated_frame ||
+                                it->second.ground_free_frame == accumulated_frame) continue;
+                            const auto &old = it->second.point;
+                            if (std::hypot(old.x - seed_x, old.y - seed_y) > 2.0 ||
+                                std::abs(old.z - seed_z) > 1.2) continue;
+                            double ground_z = 0.0;
+                            if (!nearby_ground(old.x, old.y, ground_z) || old.z - ground_z < 0.25 ||
+                                old.z - ground_z > 2.0) continue;
+                            candidates.insert(key);
+                        }
+                    }
+                }
+                dynamic_voxel_ray::flood_connected(
+                    seed.key,
+                    [&](const AccumulatedVoxelKey &key) {
+                        return candidates.count(key) != 0 || cleared_neighbors.count(key) != 0;
+                    },
+                    [&](const AccumulatedVoxelKey &key) {
+                        if (candidates.count(key) == 0) return;
+                        auto it = accumulated_map_voxels.find(key);
+                        if (it == accumulated_map_voxels.end()) return;
+                        if (it->second.ground_free_frame + 1 != accumulated_frame)
+                            it->second.ground_free_scans = 0;
+                        it->second.ground_free_frame = accumulated_frame;
+                        // The seed itself already carries multi-frame direct
+                        // free-space evidence; one subsequent ground-supported
+                        // scan is sufficient for the published-history copy.
+                        if (++it->second.ground_free_scans >= 1)
+                        {
+                            erased.push_back(key);
+                            accumulated_map_voxels.erase(it);
+                        }
+                    },
+                    6000);
+            }
+        }
+
+        dynamic_ground_cleared_total += erased.size() - directly_cleared;
+        // Ground-proximity propagation only edits the published history.
+        // The registration tree needs direct free-ray evidence before deletion.
+        for (const auto &key : tree_erased)
+        {
+            BoxPointType box;
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const int64_t coord = axis == 0 ? key.x : (axis == 1 ? key.y : key.z);
+                box.vertex_min[axis] = static_cast<float>(coord * accumulated_map_effective_voxel_size);
+                box.vertex_max[axis] = static_cast<float>((coord + 1) * accumulated_map_effective_voxel_size);
+            }
+            pending_dynamic_deletions.push_back(box);
+        }
+        if (!pending_dynamic_deletions.empty() && ikdtree.Root_Node != nullptr)
+        {
+            std::vector<BoxPointType> boxes;
+            const size_t count = std::min<size_t>(256, pending_dynamic_deletions.size());
+            boxes.reserve(count);
+            for (size_t i = 0; i < count; ++i)
+            {
+                boxes.push_back(pending_dynamic_deletions.front());
+                pending_dynamic_deletions.pop_front();
+            }
+            ikdtree.Delete_Point_Boxes(boxes);
+        }
+    }
+    enforce_accumulated_map_budget();
+}
+
 void publish_frame_world(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull)
 {
     if(scan_pub_en)
@@ -589,17 +1053,8 @@ void publish_effect_world(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::Shar
 
 void publish_map(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap)
 {
-    PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
-    int size = laserCloudFullRes->points.size();
-    PointCloudXYZI::Ptr laserCloudWorld( \
-                    new PointCloudXYZI(size, 1));
-
-    for (int i = 0; i < size; i++)
-    {
-        RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-                            &laserCloudWorld->points[i]);
-    }
-    *pcl_wait_pub += *laserCloudWorld;
+    if (accumulated_map_voxels.empty()) return;
+    refresh_accumulated_map_cloud();
 
     sensor_msgs::msg::PointCloud2 laserCloudmsg;
     pcl::toROSMsg(*pcl_wait_pub, laserCloudmsg);
@@ -654,6 +1109,7 @@ void publish_local_map(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedP
 
 void save_to_pcd()
 {
+    refresh_accumulated_map_cloud();
     pcl::PCDWriter pcd_writer;
     pcd_writer.writeBinary(map_file_path, *pcl_wait_pub);
 }
@@ -856,6 +1312,25 @@ public:
         this->declare_parameter<bool>("publish.local_map_en", true);
         this->declare_parameter<double>("publish.local_map_radius", 12.0);
         this->declare_parameter<double>("publish.local_map_z_half", 3.0);
+        this->declare_parameter<double>("publish.map_publish_hz", 1.0);
+        this->declare_parameter<double>("publish.map_voxel_size", 0.30);
+        this->declare_parameter<int>("publish.map_max_points", 800000);
+        this->declare_parameter<bool>("publish.map_dense_en", false);
+        this->declare_parameter<bool>("mapping.dynamic_clear_enabled", false);
+        this->declare_parameter<bool>("mapping.dynamic_expand_enabled", false);
+        this->declare_parameter<int>("mapping.dynamic_clear_frames", 3);
+        this->declare_parameter<int>("mapping.dynamic_clear_max_gap_frames", 3);
+        this->declare_parameter<bool>("mapping.dynamic_ground_replace_enabled", false);
+        this->declare_parameter<int>("mapping.dynamic_ground_clear_frames", 3);
+        this->declare_parameter<int>("mapping.dynamic_ground_min_returns", 2);
+        this->declare_parameter<double>("mapping.dynamic_ground_max_span", 0.14);
+        this->declare_parameter<double>("mapping.dynamic_ground_search_radius", 0.24);
+        this->declare_parameter<double>("mapping.dynamic_ground_min_height", 0.30);
+        this->declare_parameter<int>("mapping.dynamic_ground_max_points", 6000);
+        this->declare_parameter<int>("mapping.dynamic_expand_min_seeds", 6);
+        this->declare_parameter<int>("mapping.dynamic_max_rays", 2500);
+        this->declare_parameter<double>("mapping.dynamic_ray_range", 30.0);
+        this->declare_parameter<double>("mapping.dynamic_endpoint_margin", 0.65);
         this->declare_parameter<int>("max_iteration", 4);
         this->declare_parameter<string>("map_file_path", "");
         this->declare_parameter<string>("common.lid_topic", "/livox/lidar");
@@ -907,6 +1382,45 @@ public:
         this->get_parameter_or<bool>("publish.local_map_en", local_map_pub_en, true);
         this->get_parameter_or<double>("publish.local_map_radius", local_map_radius, 12.0);
         this->get_parameter_or<double>("publish.local_map_z_half", local_map_z_half, 3.0);
+        this->get_parameter_or<double>("publish.map_publish_hz", accumulated_map_publish_hz, 1.0);
+        this->get_parameter_or<double>("publish.map_voxel_size", accumulated_map_voxel_size, 0.30);
+        this->get_parameter_or<int>("publish.map_max_points", accumulated_map_max_points, 800000);
+        this->get_parameter_or<bool>("publish.map_dense_en", accumulated_map_dense, false);
+        this->get_parameter_or<bool>("mapping.dynamic_clear_enabled", dynamic_map_clear_enabled, false);
+        this->get_parameter_or<bool>("mapping.dynamic_expand_enabled", dynamic_map_expand_enabled, false);
+        this->get_parameter_or<int>("mapping.dynamic_clear_frames", dynamic_map_clear_frames, 3);
+        this->get_parameter_or<int>("mapping.dynamic_clear_max_gap_frames", dynamic_map_clear_max_gap_frames, 3);
+        this->get_parameter_or<bool>("mapping.dynamic_ground_replace_enabled", dynamic_map_ground_replace_enabled, false);
+        this->get_parameter_or<int>("mapping.dynamic_ground_clear_frames", dynamic_map_ground_clear_frames, 3);
+        this->get_parameter_or<int>("mapping.dynamic_ground_min_returns", dynamic_map_ground_min_returns, 2);
+        this->get_parameter_or<double>("mapping.dynamic_ground_max_span", dynamic_map_ground_max_span, 0.14);
+        this->get_parameter_or<double>("mapping.dynamic_ground_search_radius", dynamic_map_ground_search_radius, 0.24);
+        this->get_parameter_or<double>("mapping.dynamic_ground_min_height", dynamic_map_ground_min_height, 0.30);
+        this->get_parameter_or<int>("mapping.dynamic_ground_max_points", dynamic_map_ground_max_points, 6000);
+        this->get_parameter_or<int>("mapping.dynamic_expand_min_seeds", dynamic_map_expand_min_seeds, 6);
+        this->get_parameter_or<int>("mapping.dynamic_max_rays", dynamic_map_max_rays, 2500);
+        this->get_parameter_or<double>("mapping.dynamic_ray_range", dynamic_map_ray_range, 30.0);
+        this->get_parameter_or<double>("mapping.dynamic_endpoint_margin", dynamic_map_endpoint_margin, 0.65);
+        dynamic_map_clear_frames = std::clamp(dynamic_map_clear_frames, 2, 10);
+        dynamic_map_clear_max_gap_frames = std::clamp(dynamic_map_clear_max_gap_frames, 1, 10);
+        dynamic_map_ground_clear_frames = std::clamp(dynamic_map_ground_clear_frames, 2, 10);
+        dynamic_map_ground_min_returns = std::clamp(dynamic_map_ground_min_returns, 1, 20);
+        dynamic_map_ground_max_span = std::clamp(dynamic_map_ground_max_span, 0.03, 0.5);
+        dynamic_map_ground_search_radius = std::clamp(dynamic_map_ground_search_radius, 0.05, 0.6);
+        dynamic_map_ground_min_height = std::clamp(dynamic_map_ground_min_height, 0.05, 1.0);
+        dynamic_map_ground_max_points = std::clamp(dynamic_map_ground_max_points, 0, 50000);
+        dynamic_map_expand_min_seeds = std::clamp(dynamic_map_expand_min_seeds, 2, 32);
+        dynamic_map_max_rays = std::clamp(dynamic_map_max_rays, 0, 10000);
+        dynamic_map_ray_range = std::clamp(dynamic_map_ray_range, 2.0, 100.0);
+        dynamic_map_endpoint_margin = std::clamp(dynamic_map_endpoint_margin, 0.3, 2.0);
+        RCLCPP_INFO(this->get_logger(),
+                    "Dynamic map policy: direct=%s frames=%d max_gap=%d ground=%s ground_frames=%d min_height=%.2f expansion=%s min_seeds=%d",
+                    dynamic_map_clear_enabled ? "on" : "off", dynamic_map_clear_frames,
+                    dynamic_map_clear_max_gap_frames, dynamic_map_ground_replace_enabled ? "on" : "off",
+                    dynamic_map_ground_clear_frames, dynamic_map_ground_min_height,
+                    dynamic_map_expand_enabled ? "on" : "off", dynamic_map_expand_min_seeds);
+        accumulated_map_effective_voxel_size = std::max(0.05, accumulated_map_voxel_size);
+        accumulated_map_voxels.reserve(static_cast<size_t>(std::min(200000, std::max(0, accumulated_map_max_points))));
         this->get_parameter_or<int>("max_iteration", NUM_MAX_ITERATIONS, 4);
         this->get_parameter_or<string>("map_file_path", map_file_path, "");
         this->get_parameter_or<string>("common.lid_topic", lid_topic, "/livox/lidar");
@@ -1038,7 +1552,11 @@ public:
         pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 20);
         pubLaserCloudFull_body_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered_body", 20);
         pubLaserCloudEffect_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_effected", 20);
-        pubLaserCloudMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 20);
+        // Keep the latest global map available to RViz and to analysis nodes
+        // that are started after FAST-LIO has already initialized.
+        auto map_qos = rclcpp::QoS(rclcpp::KeepLast(1));
+        map_qos.reliable().transient_local();
+        pubLaserCloudMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", map_qos);
         pubLaserCloudLocalMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_local_map", 20);
         pubOdomAftMapped_ = this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 20);
         pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 20);
@@ -1048,10 +1566,27 @@ public:
         auto period_ms = std::chrono::milliseconds(static_cast<int64_t>(1000.0 / 100.0));
         timer_ = rclcpp::create_timer(this, this->get_clock(), period_ms, std::bind(&LaserMappingNode::timer_callback, this));
 
-        auto map_period_ms = std::chrono::milliseconds(static_cast<int64_t>(1000.0));
-        map_pub_timer_ = rclcpp::create_timer(this, this->get_clock(), map_period_ms, std::bind(&LaserMappingNode::map_publish_callback, this));
-
+        const double safe_map_publish_hz = std::max(0.05, accumulated_map_publish_hz);
+        if (map_pub_en)
+        {
+            const auto map_period_ms = std::chrono::milliseconds(
+                std::max<int64_t>(1, static_cast<int64_t>(1000.0 / safe_map_publish_hz)));
+            // Map visualization must not depend on a simulated sensor stamp
+            // advancing. The scan callback only updates the accumulated data;
+            // this wall timer republishes the latest snapshot independently.
+            map_pub_timer_ = this->create_wall_timer(
+                map_period_ms, std::bind(&LaserMappingNode::map_publish_callback, this));
+        }
         map_save_srv_ = this->create_service<std_srvs::srv::Trigger>("map_save", std::bind(&LaserMappingNode::map_save_callback, this, std::placeholders::_1, std::placeholders::_2));
+
+        if (map_pub_en)
+        {
+            RCLCPP_INFO(this->get_logger(),
+                        "Accumulated map enabled: topic=/Laser_map rate=%.2fHz voxel=%.2fm max_points=%d source=%s",
+                        safe_map_publish_hz, accumulated_map_effective_voxel_size,
+                        std::max(0, accumulated_map_max_points),
+                        accumulated_map_dense ? "deskewed_full_scan" : "registration_scan");
+        }
 
         RCLCPP_INFO(this->get_logger(), "Node init finished.");
     }
@@ -1118,6 +1653,7 @@ private:
                         pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
                     }
                     ikdtree.Build(feats_down_world->points);
+                    if (map_pub_en || pcd_save_en || dynamic_map_clear_enabled) accumulate_map_frame();
                 }
                 return;
             }
@@ -1175,6 +1711,7 @@ private:
             /*** add the feature points to map kdtree ***/
             t3 = omp_get_wtime();
             map_incremental();
+            if (map_pub_en || pcd_save_en || dynamic_map_clear_enabled) accumulate_map_frame();
             t5 = omp_get_wtime();
             
             /******* Publish points *******/
@@ -1183,8 +1720,10 @@ private:
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body_);
             if (effect_pub_en) publish_effect_world(pubLaserCloudEffect_);
             if (local_map_pub_en) publish_local_map(pubLaserCloudLocalMap_);
-            // if (map_pub_en) publish_map(pubLaserCloudMap_);
-
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                "Cloud detail: deskewed=%zu registration=%d accumulated=%zu voxel=%.3fm processing=%.1fms",
+                feats_undistort->size(), feats_down_size, accumulated_map_voxels.size(),
+                accumulated_map_effective_voxel_size, 1000.0 * (omp_get_wtime() - t0));
             /*** Debug variables ***/
             if (runtime_pos_log)
             {
@@ -1219,7 +1758,25 @@ private:
 
     void map_publish_callback()
     {
-        if (map_pub_en) publish_map(pubLaserCloudMap_);
+        if (!map_pub_en || accumulated_map_voxels.empty()) return;
+        publish_map(pubLaserCloudMap_);
+        if (dynamic_map_clear_enabled &&
+            (dynamic_direct_cleared_total != last_logged_direct_clear_ ||
+             dynamic_ground_cleared_total != last_logged_ground_clear_))
+        {
+            RCLCPP_INFO(this->get_logger(),
+                        "Dynamic map clearing: direct=%lu expanded=%lu pending_ikd=%zu",
+                        static_cast<unsigned long>(dynamic_direct_cleared_total),
+                        static_cast<unsigned long>(dynamic_ground_cleared_total),
+                        pending_dynamic_deletions.size());
+            last_logged_direct_clear_ = dynamic_direct_cleared_total;
+            last_logged_ground_clear_ = dynamic_ground_cleared_total;
+        }
+        if (!map_publish_logged_)
+        {
+            RCLCPP_INFO(this->get_logger(), "First accumulated map published: %zu points", accumulated_map_voxels.size());
+            map_publish_logged_ = true;
+        }
     }
 
     void map_save_callback(std_srvs::srv::Trigger::Request::ConstSharedPtr req, std_srvs::srv::Trigger::Response::SharedPtr res)
@@ -1256,6 +1813,9 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_srv_;
 
     bool effect_pub_en = false, map_pub_en = false;
+    bool map_publish_logged_ = false;
+    uint64_t last_logged_direct_clear_ = 0;
+    uint64_t last_logged_ground_clear_ = 0;
     int effect_feat_num = 0, frame_num = 0;
     double deltaT, deltaR, aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0, aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0;
     bool flg_EKF_converged, EKF_stop_flg = 0;

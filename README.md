@@ -1,10 +1,12 @@
 # PTR-Nav
 
-PTR-Nav 是一个面向复杂非结构化地形的 ROS 2 UGV 导航、建图、仿真与规划控制工程。当前仓库分支用于环境搭建和仿真链路前期整理，重点保留可复现的源码、配置、模型和脚本，不提交 `build/`、`install/`、`log/` 等本地编译/运行产物。
+PTR-Nav 是一个面向复杂非结构化地形的 ROS 2 UGV 导航、建图、仿真与规划控制工程。当前分支记录 Isaac Sim、FAST-LIO2、GPU 地形分析、FSGP-BGK/SEB 增强与规划控制的集成开发状态，保留源码、配置、模型和脚本，不提交 `build/`、`install/`、`log/` 等本地编译/运行产物。
 
 ## 当前分支状态
 
-本分支建议作为环境搭建前期分支使用，例如 `env-setup-prep`。主分支暂不切换到这套内容，等 Isaac Sim、FAST-LIO、Gazebo、规划控制链路稳定后再合并。
+本次版本分支为 `isaac-gpu-nav-baseline-20261010`，基于 `fsgp-bgk-se2-integration` 保存当前集成与实验基线，不修改仓库默认分支，也不代表已完成全场景验证。
+
+首轮实验仅记录我们方法自身的数据，未运行外部方法对比：6 次流程门控测试中 3 次通过；静态绕障仍有失败，历史 `/Laser_map` 动态残影清除仍有不足，台阶测试出现控制延迟异常。实验协议与详细记录见 [动态地图与导航实验说明](docs/DYNAMIC_MAP_EXPERIMENTS.md)，模块启动与接口见 [Isaac 链路说明](docs/HUNTER_ISAAC_STACK.md) 和 [脚本目录说明](scripts/README.md)。
 
 当前重点链路：
 
@@ -68,75 +70,101 @@ colcon build --packages-select fast_lio --symlink-install
 source install/setup.bash
 ```
 
-## Gazebo FAST-LIO 链路
+## Isaac Sim 模块化链路
 
-启动 Hunter + Gazebo 仿真：
+当前仿真链路不再使用“大一键脚本”把所有节点绑在一起。按下面的顺序分别启动，每个终端只负责一个模块：
 
-```bash
-./run_hunter_gazebo.sh
-```
-
-启动 FAST-LIO：
+Terminal 1，仿真环境：
 
 ```bash
-./run_hunter_fastlio.sh
+scripts/sim/start_simulation.sh
 ```
 
-`run_hunter_fastlio.sh` 会根据 `/livox/lidar` 的消息类型自动选择配置：
-
-- `sensor_msgs/msg/PointCloud2`: `src/FAST_LIO/config/isaac_hunter_mid360_pointcloud.yaml`
-- `livox_ros_driver2/msg/CustomMsg`: `src/FAST_LIO/config/gazebo_hunter_mid360.yaml`
-
-## Isaac Sim FAST-LIO 链路
-
-可视化仿真、传感器话题、键盘控制和 FAST-LIO 建图建议分终端启动。
-
-Terminal 1，启动 Isaac Sim：
+需要 D455 画面时：
 
 ```bash
-./run_hunter_isaac_sim.sh mapping:=true --scene-profile mars_gale --drive-mode cmd_vel --cmd-vel-angular-mode steer --mars-visual-detail full --mars-surface-skin full --sensor-visual-detail cad --viewer-camera close --obstacle-density sparse --camera-width 1280 --camera-height 720 --render-hz 10 --realtime
+scripts/sim/start_simulation.sh --camera-enabled
 ```
 
-Terminal 2，检查传感器话题：
+默认建图档位关闭相机以保持实时性；GUI 中启用后默认得到 960x540 RGB/深度图像。headless 建图档位会把相机分辨率限制到 640x360，并使用简化地表材质。需要更清晰的 GUI 图像时可传入 `--camera-width 1280 --camera-height 720 --render-quality quality`，但需要重新检查实时率。
+
+Terminal 2，FAST-LIO2 建图：
 
 ```bash
-./check_hunter_isaac_topics.sh 45
-./check_hunter_isaac_rates.sh
+scripts/sim/start_mapping.sh rviz:=true
 ```
 
-Terminal 3，启动 FAST-LIO：
+Terminal 3，GPU 地形分析前端 + FSGP-BGK/SEB 增强：
 
 ```bash
-./run_hunter_fastlio.sh
+scripts/sim/start_terrain_analysis.sh terrain_backend:=gpu fsgp_gpu_backend:=cupy
 ```
 
-Terminal 4，键盘控制：
+Terminal 4，规划与底盘控制：
 
 ```bash
-./run_hunter_isaac_keyboard.sh
+scripts/sim/start_planning_control.sh
 ```
 
-发生建图漂移时运行：
+手动控制时不要启动 Terminal 4，改为：
 
 ```bash
-./check_hunter_slam_drift.sh 20
+scripts/sim/start_keyboard_control.sh
 ```
 
-这个诊断脚本会对比 FAST-LIO `/Odometry` 和 Isaac `/isaac/ground_truth/odometry`，同时输出 LiDAR/IMU 频率、点云字段、点数、最新控制量和相对 XY/z/yaw 漂移。
+仅验证传感器和建图时，可以只启动前两个模块。无 GPU 时将 Terminal 3 改为：
+
+```bash
+scripts/sim/start_terrain_analysis.sh terrain_backend:=cpu fsgp_gpu_backend:=cpu
+```
+
+诊断脚本也已经归档到仿真目录：
+
+```bash
+scripts/sim/checks/topics.sh 45
+scripts/sim/checks/rates.sh
+scripts/sim/checks/slam_drift.sh 20
+scripts/sim/checks/control_response.sh 0.8 0.30 6 steer
+```
+
+其中 `control_response.sh` 要在没有规划器发布 `/cmd_vel` 时运行。
+
+FAST-LIO 点云话题含义：
+
+- `/cloud_registered`：当前一帧在 `map` 坐标系下的注册点云，供实时地形分析使用。
+- `/Laser_map`：经过体素去重的累计增量地图，当前 Isaac 配置以 1 Hz 发布，RViz 默认显示此话题；首次初始化后需要等到下一帧完成匹配。
+- `/livox/lidar`：仿真雷达原始实时点云，RViz 默认关闭，排查传感器时可手动打开。
 
 ## FSGP-BGK / SEB 地形增强链路
 
-当前分支新增 `fsgp_bgk_se2` ROS 2 集成包。它订阅现有 `terrain_analyzer` 的 `SE2Grid`，使用 GPU 优先、CPU 托底的 BGK 风格地形平滑和 SEB 航向扫描，发布增强后的 yaw-aware 风险地图：
+当前分支新增 `fsgp_bgk_se2` ROS 2 集成包。它订阅现有 `terrain_analyzer` 的 `SE2Grid`，使用 CPU/CuPy 自适应后端的 BGK 风格地形平滑和 SEB 航向扫描，发布增强后的 yaw-aware 风险地图。常规使用一个地形分析入口启动这两个计算节点：
 
 ```bash
-./run_hunter_fsgp_bgk_se2.sh
+scripts/sim/start_terrain_analysis.sh
 ```
 
-让 `terrain_nav` 消费增强地图：
+默认 `fsgp_gpu_backend:=auto` 会按计算规模选择后端：当前 `104x104x36` 地图会走 CuPy，仅很小的地图保留 CPU 以避开 kernel 启动开销。强制 GPU 写法是：
 
 ```bash
-./run_hunter_fsgp_bgk_nav.sh
+scripts/sim/start_terrain_analysis.sh terrain_backend:=gpu fsgp_gpu_backend:=cupy
 ```
+
+只需基础地形图时设 `enhance:=false`。若确实需要在两个终端分别调试前端与增强节点，再运行 `scripts/sim/optional/start_fsgp_bgk.sh gpu_backend:=cupy`。
+
+自主导航模式，让 `terrain_nav` 消费增强地图并独占 `/cmd_vel`：
+
+```bash
+scripts/sim/start_planning_control.sh
+```
+
+手动驾驶并同时观察 GPU 地形分析/FSGP 增强地图时，必须关闭导航控制输出：
+
+```bash
+scripts/sim/start_terrain_analysis.sh
+scripts/sim/start_keyboard_control.sh
+```
+
+不要同时运行键盘和 `terrain_nav`。键盘脚本会检测已有 `/cmd_vel` 发布者并拒绝启动，避免两个控制器互相覆盖。
 
 对应链路：
 
@@ -145,6 +173,18 @@ FAST-LIO2 -> terrain_analyzer -> /car_0_terrain_analyzer/fused_map
           -> fsgp_bgk_se2 -> /car_0_fsgp_bgk/fused_map
           -> terrain_nav(risk_query_mode=se2_yaw)
 ```
+
+这里的 `terrain_analyzer` 是地形感知前端：它把当前帧 `/cloud_registered`
+和 `/Odometry` 转成局部高程、方差、SDF、障碍和已有航向切片的基础风险
+`SE2Grid`。它不做高斯回归，也不发布控制指令。`fsgp_bgk_se2` 是增强后端：
+它对前端栅格执行 BGK 风格加权平滑，并用 SEB 按车辆航向扫描 footprint，生成
+`/car_0_fsgp_bgk/fused_map` 中的航向相关风险层。最后 `terrain_nav` 只消费
+增强地图并发布 `/cmd_vel`。因此三个计算阶段分开是为了可观测、可替换和避免控制器
+抢占话题，不是重复计算同一件事。当前接入版尚未移植上游完整的稀疏高斯过程
+(SGP)，不要把 BGK 风格平滑误认为完整 FSGP 算法。
+
+旧的一键组合入口和旧 Gazebo/实验脚本已移到 `scripts/old/`，不再作为当前
+工程入口。实机入口位于 `scripts/real/`；仿真入口位于 `scripts/sim/`。
 
 ## 重要说明
 
@@ -156,6 +196,7 @@ FAST-LIO2 -> terrain_analyzer -> /car_0_terrain_analyzer/fused_map
 
 更多细节见：
 
+- `docs/HUNTER_ISAAC_STACK.md`
 - `docs/FSGP_BGK_INTEGRATION_PLAN.md`
 - `src/isaac_sim_hunter_livo2/docs/ISAAC_SIM_LIVO2.md`
 - `docs/FAST_LIVO2_D455_INTEGRATION.md`

@@ -8,10 +8,9 @@ Panels:
         - /Status1
         - /Odometry1
         - /Path1
-        - /CloudRegistered1
         - /CloudLocalMap1
         - /CloudEffected1
-        - /CloudMap1
+        - /AccumulatedMap1
       Splitter Ratio: 0.5
     Tree Height: 746
   - Class: rviz_common/Selection
@@ -31,7 +30,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: CloudMap
+    SyncSource: AccumulatedMap
 Visualization Manager:
   Class: ""
   Displays:
@@ -133,14 +132,14 @@ Visualization Manager:
       Class: rviz_default_plugins/PointCloud2
       Color: 130; 220; 235
       Color Transformer: FlatColor
-      Decay Time: 2
-      Enabled: true
+      Decay Time: 0
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 150
       Min Color: 0; 0; 0
       Min Intensity: 0
-      Name: CloudRegistered
+      Name: CurrentRegisteredFrame
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 2
@@ -155,7 +154,7 @@ Visualization Manager:
         Value: /cloud_registered
       Use Fixed Frame: true
       Use rainbow: false
-      Value: true
+      Value: false
     - Alpha: 0.550000011920929
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -227,8 +226,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 36.88514709472656
-        Min Value: -39.943817138671875
+        Max Value: 22.699174880981445
+        Min Value: -4.4334611892700195
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -242,11 +241,11 @@ Visualization Manager:
       Max Intensity: 0
       Min Color: 82; 118; 142
       Min Intensity: 0
-      Name: CloudMap
+      Name: AccumulatedMap
       Position Transformer: XYZ
       Selectable: true
-      Size (Pixels): 1
-      Size (m): 0.009999999776482582
+      Size (Pixels): 2
+      Size (m): 0.10000000149011612
       Style: Squares
       Topic:
         Depth: 5
@@ -304,25 +303,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 30.86968994140625
+      Distance: 63.48490524291992
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 14.984378814697266
-        Y: -7.086442947387695
-        Z: 2.1134445667266846
+        X: 4.808692455291748
+        Y: -3.6866683959960938
+        Z: 4.585958003997803
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5147957801818848
+      Pitch: 0.21979601681232452
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 5.685375213623047
+      Yaw: 1.7503862380981445
     Saved: ~
 Window Geometry:
   Displays:

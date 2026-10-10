@@ -10,14 +10,18 @@ fsgp_bgk_se2_node:
     seb_cloud_topic: /car_0_fsgp_bgk/seb_risk_cloud
     frame_id: map
 
-    # The first integration stage only needs the existing fused_map. Keep the
-    # raw cloud subscription disabled until the FSGP training adapter is enabled.
-    subscribe_cloud: false
+    # Preserve current-scan vertical geometry independently of terrain smoothing.
+    subscribe_cloud: true
 
     use_gpu: true
+    # auto selects the fused CUDA kernels for the normal 104x104x36 map while
+    # keeping tiny maps on CPU; set gpu_backend:=cupy to force GPU.
     gpu_backend: auto
-    # 0 means reuse the input SE2Grid yaw discretization.
-    yaw_bins: 0
+    auto_gpu_min_work_items: 100000
+    # Force enough heading bins for the SEB footprint sweep. The upstream
+    # terrain_analyzer map may only carry a coarse yaw stack.
+    yaw_bins: 36
+    max_update_rate_hz: 8.0
 
     # BGK-style local Gaussian smoothing. This is a deterministic bridge for
     # the FSGP-BGK integration and has CPU fallback when CuPy/CUDA is absent.
@@ -34,6 +38,8 @@ fsgp_bgk_se2_node:
     footprint_front: 0.42
     footprint_back: 0.42
     footprint_half_width: 0.313
+    # Keep the 0.84 x 0.626 m Hunter footprint directionally distinct on a
+    # 0.20 m grid (7 longitudinal cells versus 5 lateral cells).
     footprint_margin: 0.10
     footprint_samples_x: 5
     footprint_samples_y: 5
@@ -41,15 +47,16 @@ fsgp_bgk_se2_node:
     roll_free_rad: 0.08
     max_pitch_rad: 0.55
     max_roll_rad: 0.45
-    min_support_ratio: 0.70
+    min_support_ratio: 0.55
 
-    risk_fusion_mode: max
-    baseline_weight: 0.40
+    risk_fusion_mode: weighted
+    baseline_weight: 0.45
     seb_weight: 0.45
-    uncertainty_weight: 0.15
-    unknown_risk: 0.85
+    uncertainty_weight: 0.10
+    unknown_risk: 0.65
 
-    publish_debug_clouds: true
+    include_diagnostic_layers: false
+    publish_debug_clouds: false
     debug_yaw_index: 0
     debug_cloud_stride: 2
     log_period_sec: 2.0

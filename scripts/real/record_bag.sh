@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./record_real_bag.sh [mode] [key:=value ...] [-- extra ros2 bag args]
+  scripts/real/record_bag.sh [mode] [key:=value ...] [-- extra ros2 bag args]
 
 Modes:
   core      Raw sensor + SLAM output + terrain grid + planner/MPC/chassis feedback. Default.
@@ -35,12 +35,12 @@ Environment:
   HEXMAN_SDK_SETUP      Default: /home/z/workspace_zyz/driver/hexman/sdk_neos_ws/install/setup.bash
 
 Examples:
-  ./record_real_bag.sh
-  ./record_real_bag.sh raw
-  ./record_real_bag.sh camera
-  ./record_real_bag.sh core camera:=true
-  ./record_real_bag.sh full output:=/data/bags/test_full
-  ./record_real_bag.sh core -- --max-bag-size 21474836480
+  scripts/real/record_bag.sh
+  scripts/real/record_bag.sh raw
+  scripts/real/record_bag.sh camera
+  scripts/real/record_bag.sh core camera:=true
+  scripts/real/record_bag.sh full output:=/data/bags/test_full
+  scripts/real/record_bag.sh core -- --max-bag-size 21474836480
 EOF
 }
 

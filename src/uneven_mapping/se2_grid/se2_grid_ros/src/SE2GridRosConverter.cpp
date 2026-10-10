@@ -30,6 +30,13 @@ SE2GridRosConverter::~SE2GridRosConverter()
 
 bool SE2GridRosConverter::fromMessage(const se2_grid_msgs::msg::SE2Grid& message, se2_grid::SE2Grid& SE2Grid, const std::vector<std::string>& /*layers*/)
 {
+  if (message.layers.size() != message.has_so2.size())
+  {
+    cerr << "SE2Grid message layer/has_so2 size mismatch: layers=" << message.layers.size()
+         << " has_so2=" << message.has_so2.size() << endl;
+    return false;
+  }
+
   SE2Grid.initGeometry(Eigen::Array2d(message.info.length_x, message.info.length_y), 
                        message.info.pos_resolution, message.info.yaw_resolution,
                        Eigen::Vector2d(message.info.pose.position.x, message.info.pose.position.y));
@@ -43,6 +50,13 @@ bool SE2GridRosConverter::fromMessage(const se2_grid_msgs::msg::SE2Grid& message
     int size_yaw = SE2Grid.getSizeYaw();
     if (message.has_so2[i])
     {
+      if (data_idx + static_cast<unsigned int>(size_yaw) > message.data.size())
+      {
+        cerr << "SE2Grid message missing SO2 data for layer '" << message.layers[i]
+             << "': need " << size_yaw << " matrices at data index " << data_idx
+             << ", total data=" << message.data.size() << endl;
+        return false;
+      }
       for (int j=0; j<size_yaw; j++)
       {
         Eigen::MatrixXf d;
@@ -56,6 +70,13 @@ bool SE2GridRosConverter::fromMessage(const se2_grid_msgs::msg::SE2Grid& message
     }
     else
     {
+      if (data_idx >= message.data.size())
+      {
+        cerr << "SE2Grid message missing 2D data for layer '" << message.layers[i]
+             << "' at data index " << data_idx
+             << ", total data=" << message.data.size() << endl;
+        return false;
+      }
       Eigen::MatrixXf d;
       if(!multiArrayMessageCopyToMatrixEigen(message.data[data_idx++], d))
       {

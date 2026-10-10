@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DURATION="${1:-20}"
 
 unset PYTHONHOME
@@ -114,6 +114,9 @@ def summarize_odom_alignment(fast_samples, isaac_samples):
         return "[hunter_slam_drift] WARN: not enough timestamp-aligned FAST-LIO/Isaac odom pairs for drift comparison"
 
     f0, t0 = pairs[0]
+    initial_yaw_offset = wrap_pi(t0.yaw - f0.yaw)
+    align_cos = math.cos(initial_yaw_offset)
+    align_sin = math.sin(initial_yaw_offset)
     xy_errors = []
     z_errors = []
     yaw_errors = []
@@ -124,12 +127,17 @@ def summarize_odom_alignment(fast_samples, isaac_samples):
         tdx = truth.x - t0.x
         tdy = truth.y - t0.y
         tdz = truth.z - t0.z
-        xy_errors.append(math.hypot(fdx - tdx, fdy - tdy))
+        aligned_fdx = align_cos * fdx - align_sin * fdy
+        aligned_fdy = align_sin * fdx + align_cos * fdy
+        xy_errors.append(math.hypot(aligned_fdx - tdx, aligned_fdy - tdy))
         z_errors.append(abs(fdz - tdz))
         yaw_errors.append(abs(wrap_pi((fast.yaw - f0.yaw) - (truth.yaw - t0.yaw))))
 
     return (
         "[hunter_slam_drift] odom drift relative to Isaac truth: "
+        f"initial_yaw_offset={math.degrees(initial_yaw_offset):.1f}deg, "
+        f"fast_xy_distance={math.hypot(pairs[-1][0].x - f0.x, pairs[-1][0].y - f0.y):.3f}m, "
+        f"truth_xy_distance={math.hypot(pairs[-1][1].x - t0.x, pairs[-1][1].y - t0.y):.3f}m, "
         f"pairs={len(pairs)}, xy_last={xy_errors[-1]:.3f}m, xy_max={max(xy_errors):.3f}m, "
         f"z_last={z_errors[-1]:.3f}m, z_max={max(z_errors):.3f}m, "
         f"yaw_last={math.degrees(yaw_errors[-1]):.2f}deg, yaw_max={math.degrees(max(yaw_errors)):.2f}deg"
@@ -246,7 +254,7 @@ if len(imu_times) < 2:
     print(f"[hunter_slam_drift] ERROR: no usable IMU samples from {imu_topic}", file=sys.stderr)
     failed = True
 if len(fast_odom) < 2:
-    print(f"[hunter_slam_drift] WARN: no FAST-LIO odometry yet; start ./run_hunter_fastlio.sh after Isaac sensors are publishing")
+    print(f"[hunter_slam_drift] WARN: no FAST-LIO odometry yet; start scripts/sim/start_mapping.sh after Isaac sensors are publishing")
 if len(isaac_odom) < 2:
     print(f"[hunter_slam_drift] WARN: no Isaac truth odometry yet; start Isaac with --drive-mode cmd_vel")
 

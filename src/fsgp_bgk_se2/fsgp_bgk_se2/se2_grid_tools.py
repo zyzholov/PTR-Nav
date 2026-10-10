@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
+import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -21,7 +23,7 @@ class LayerRef:
 def yaw_slices(msg) -> int:
     yaw_res = max(float(msg.info.yaw_resolution), 1.0e-6)
     length_yaw = max(float(msg.info.length_yaw), yaw_res)
-    return max(1, int(round(length_yaw / yaw_res)))
+    return max(1, int(math.ceil(length_yaw / yaw_res - 1.0e-6)))
 
 
 def layer_refs(msg) -> Dict[str, LayerRef]:
@@ -79,6 +81,9 @@ def matrix_to_multiarray_like(
     out = Float32MultiArray()
     if template is not None and len(template.layout.dim) >= 2:
         out.layout = template.layout
+        # The output buffer below is packed; do not retain padding from an
+        # input message that happened to use a non-zero data offset.
+        out.layout.data_offset = 0
         order = "C" if _is_row_major(template) else "F"
     else:
         out.layout.dim = [
@@ -88,12 +93,29 @@ def matrix_to_multiarray_like(
         out.layout.data_offset = 0
         order = "F"
 
-    out.data = np.asarray(matrix, dtype=np.float32).ravel(order=order).tolist()
+    values = array("f")
+    values.frombytes(np.asarray(matrix, dtype=np.float32).tobytes(order=order))
+    out.data = values
     return out
 
 
 def first_data_template(msg) -> Optional[Float32MultiArray]:
     return msg.data[0] if msg.data else None
+
+
+def grid_buffer_to_world(matrix: np.ndarray, msg) -> np.ndarray:
+    # Native SE2Grid rows/columns are descending X/Y in a circular buffer.
+    unwrapped = np.roll(
+        matrix, (-int(msg.start_index_row), -int(msg.start_index_col)), axis=(0, 1)
+    )
+    return np.ascontiguousarray(unwrapped[::-1, ::-1].T)
+
+
+def world_to_grid_buffer(matrix: np.ndarray, msg) -> np.ndarray:
+    native = matrix.T[::-1, ::-1]
+    return np.roll(
+        native, (int(msg.start_index_row), int(msg.start_index_col)), axis=(0, 1)
+    )
 
 
 def get_layer_slices(msg, name: str) -> Tuple[List[np.ndarray], bool, Optional[Float32MultiArray]]:
