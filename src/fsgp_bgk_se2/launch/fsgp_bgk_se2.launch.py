@@ -1,12 +1,14 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    numeric_threads=EnvironmentVariable('HUNTER_FSGP_CPU_THREADS',default_value=
+        EnvironmentVariable('HUNTER_TERRAIN_CPU_THREADS',default_value='1'))
     params = LaunchConfiguration("params")
     use_sim_time = LaunchConfiguration("use_sim_time")
     input_fused_map_topic = LaunchConfiguration("input_fused_map_topic")
@@ -50,6 +52,11 @@ def generate_launch_description():
             package="fsgp_bgk_se2",
             executable="fsgp_bgk_se2_node",
             name="fsgp_bgk_se2_node",
+            additional_env={"RMW_FASTRTPS_PUBLICATION_MODE": EnvironmentVariable(
+                "RMW_FASTRTPS_PUBLICATION_MODE", default_value="ASYNCHRONOUS"),
+                "OPENBLAS_NUM_THREADS": EnvironmentVariable("OPENBLAS_NUM_THREADS", default_value=numeric_threads),
+                "OMP_NUM_THREADS": EnvironmentVariable("OMP_NUM_THREADS", default_value=numeric_threads),
+                "MKL_NUM_THREADS": EnvironmentVariable("MKL_NUM_THREADS", default_value=numeric_threads)},
             output="screen",
             parameters=[
                 params,

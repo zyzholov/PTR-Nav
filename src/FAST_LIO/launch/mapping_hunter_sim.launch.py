@@ -23,6 +23,7 @@ def generate_launch_description():
     rviz_cfg = LaunchConfiguration("rviz_cfg")
     dynamic_clear_enabled = LaunchConfiguration("dynamic_clear_enabled")
     dynamic_expand_enabled = LaunchConfiguration("dynamic_expand_enabled")
+    dynamic_filter_backend = LaunchConfiguration("dynamic_filter_backend")
 
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         "use_sim_time",
@@ -66,6 +67,9 @@ def generate_launch_description():
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {"use_sim_time": use_sim_time,
                      "mapping.dynamic_clear_enabled": ParameterValue(dynamic_clear_enabled, value_type=bool),
+                     "mapping.dynamic_filter_backend": dynamic_filter_backend,
+                     "mapping.dynamic_registration_filter_enabled": ParameterValue(
+                         LaunchConfiguration("dynamic_registration_filter"), value_type=bool),
                      "mapping.dynamic_expand_enabled": ParameterValue(dynamic_expand_enabled, value_type=bool)}],
         output="screen"
     )
@@ -86,6 +90,9 @@ def generate_launch_description():
     ld.add_action(declare_rviz_config_path_cmd)
     ld.add_action(declare_dynamic_clear_cmd)
     ld.add_action(declare_dynamic_expand_cmd)
+    ld.add_action(DeclareLaunchArgument("dynamic_filter_backend",default_value="none",choices=["none","dufomap","freedom"]))
+    ld.add_action(DeclareLaunchArgument("dynamic_registration_filter",default_value="false",choices=["true","false"],
+        description="Experimental preceding-source FreeDOM label exclusion in EKF association; raw scans unchanged."))
 
     ld.add_action(fast_lio_node)
     ld.add_action(rviz_node)

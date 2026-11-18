@@ -28,6 +28,8 @@
   <depend>pcl_ros</depend>
   <depend>pcl_conversions</depend>
   <depend>livox_ros_driver2</depend>
+  <depend>dynamic_map_filter</depend>
+  <test_depend>ament_cmake_test</test_depend>
 
   <exec_depend>terrain_analyzer</exec_depend>
   <exec_depend>se2_grid_converter</exec_depend>

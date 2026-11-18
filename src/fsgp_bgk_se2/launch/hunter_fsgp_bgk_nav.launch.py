@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -12,6 +12,8 @@ def _equals(value, expected):
 
 
 def generate_launch_description():
+    numeric_threads=EnvironmentVariable('HUNTER_FSGP_CPU_THREADS',default_value=
+        EnvironmentVariable('HUNTER_TERRAIN_CPU_THREADS',default_value='1'))
     use_sim_time = LaunchConfiguration("use_sim_time")
     terrain_backend = LaunchConfiguration("terrain_backend")
     terrain_cpu_params = LaunchConfiguration("terrain_cpu_params")
@@ -140,6 +142,11 @@ def generate_launch_description():
             package="fsgp_bgk_se2",
             executable="fsgp_bgk_se2_node",
             name="fsgp_bgk_se2_node",
+            additional_env={"RMW_FASTRTPS_PUBLICATION_MODE": EnvironmentVariable(
+                "RMW_FASTRTPS_PUBLICATION_MODE", default_value="ASYNCHRONOUS"),
+                "OPENBLAS_NUM_THREADS": EnvironmentVariable("OPENBLAS_NUM_THREADS", default_value=numeric_threads),
+                "OMP_NUM_THREADS": EnvironmentVariable("OMP_NUM_THREADS", default_value=numeric_threads),
+                "MKL_NUM_THREADS": EnvironmentVariable("MKL_NUM_THREADS", default_value=numeric_threads)},
             output="screen",
             parameters=[
                 fsgp_params,
@@ -173,9 +180,16 @@ def generate_launch_description():
                     "se2_risk_layer": "risk",
                     "hard_risk_layer": "baseline_risk",
                     "se2_risk_lethal": True,
+                    "chance_constrained": True,
                 },
             ],
             condition=IfCondition(enable_nav),
+        ),
+        Node(
+            package="fsgp_bgk_se2", executable="navigation_display", name="navigation_display",
+            output="screen", condition=IfCondition(enable_grid_clouds),
+            parameters=[{"use_sim_time": use_sim_time, "odom_topic": odom_topic,
+                         "grid_topic": output_fused_map_topic, "cmd_topic": cmd_topic}],
         ),
         Node(
             package="se2_grid_converter",
@@ -186,18 +200,21 @@ def generate_launch_description():
                 "use_sim_time": use_sim_time,
                 "input_topic": output_fused_map_topic,
                 "output_topic": "/car_0_terrain_analyzer/elevation_cloud",
-                "layer_name": "bgk_mean",
+                "layer_name": "elevation",
                 "valid_layer_name": "valid",
                 "valid_threshold": 0.5,
                 "height_as_z": True,
                 "z_offset": 0.02,
-                "height_layer_name": "bgk_mean",
+                "height_layer_name": "elevation",
                 "drape_on_height": False,
                 "publish_surface": True,
                 "surface_topic": "/car_0_terrain_analyzer/terrain_surface",
                 "surface_max_step": 0.65,
                 "surface_alpha": 0.92,
-                "surface_risk_layer": "risk",
+                "surface_risk_layer": "failure_probability_upper",
+                "surface_body_collision_overlay": False,
+                "body_pose_surface_topic": "/terrain_display/body_pose_risk_surface",
+                "surface_probability_colors": True,
                 "follow_odom_yaw": True,
                 "odom_topic": odom_topic,
                 "use_color_map": True,
@@ -216,12 +233,12 @@ def generate_launch_description():
                 "use_sim_time": use_sim_time,
                 "input_topic": output_fused_map_topic,
                 "output_topic": "/car_0_terrain_analyzer/risk_cloud",
-                "layer_name": "risk",
-                "valid_layer_name": "valid",
+                "layer_name": "failure_probability_upper",
+                "valid_layer_name": "probability_valid",
                 "valid_threshold": 0.5,
                 "follow_odom_yaw": True,
                 "odom_topic": odom_topic,
-                "height_layer_name": "bgk_mean",
+                "height_layer_name": "elevation",
                 "drape_on_height": True,
                 "height_as_z": False,
                 "z_value": 0.035,
@@ -229,7 +246,7 @@ def generate_launch_description():
                 "use_color_map": True,
                 "min_height": 0.0,
                 "max_height": 1.0,
-                "colormap": "risk_gray_red",
+                "colormap": "probability",
             }],
             condition=IfCondition(enable_grid_clouds),
         ),

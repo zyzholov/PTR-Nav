@@ -1,0 +1,7 @@
+# Overlay inside a --system-site-packages experiment venv, not the ROS runtime.
+# Existing system pandas 1.3.x cannot load against this host's NumPy 2.x.
+pandas==2.2.3
+# pandas imports these optional extensions when the host provides them.
+# Overlay compatible wheels instead of inheriting NumPy 1.x system binaries.
+numexpr==2.10.2
+Bottleneck==1.4.2

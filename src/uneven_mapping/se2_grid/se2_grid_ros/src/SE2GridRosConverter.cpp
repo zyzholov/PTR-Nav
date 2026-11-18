@@ -39,7 +39,8 @@ bool SE2GridRosConverter::fromMessage(const se2_grid_msgs::msg::SE2Grid& message
 
   SE2Grid.initGeometry(Eigen::Array2d(message.info.length_x, message.info.length_y), 
                        message.info.pos_resolution, message.info.yaw_resolution,
-                       Eigen::Vector2d(message.info.pose.position.x, message.info.pose.position.y));
+                       Eigen::Vector2d(message.info.pose.position.x, message.info.pose.position.y),
+                       message.info.length_yaw);
 
   // Copy non-basic layers.
   unsigned int data_idx = 0;
@@ -126,17 +127,16 @@ void SE2GridRosConverter::toMessage(const se2_grid::SE2Grid& SE2Grid, const std:
   message.has_so2.clear();
   for (size_t i=0; i<layers.size(); i++)
   {
-    std_msgs::msg::Float32MultiArray dataArray;
     if (SE2Grid.hasSO2(layers[i]))
       message.has_so2.emplace_back(true);
     else
       message.has_so2.emplace_back(false);
 
-    std::vector<Eigen::MatrixXf> l = SE2Grid[layers[i]];
+    const auto &l = SE2Grid[layers[i]];
     for (size_t j=0; j<l.size(); j++)
     {
-      matrixEigenCopyToMultiArrayMessage(l[j], dataArray);
-      message.data.push_back(dataArray);
+      message.data.emplace_back();
+      matrixEigenCopyToMultiArrayMessage(l[j],message.data.back());
     }
   }
 

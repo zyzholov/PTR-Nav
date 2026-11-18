@@ -2,7 +2,7 @@
 <package format="3">
   <name>terrain_nav</name>
   <version>0.1.0</version>
-  <description>Lightweight terrain-aware SE2 lattice planner and MPPI-style controller.</description>
+  <description>Terrain-aware SE2 planning, hybrid path tracking and conditional dynamic-risk assessment.</description>
   <maintainer email="terrain@example.com">terrain</maintainer>
   <license>MIT</license>
 
@@ -12,6 +12,7 @@
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>diagnostic_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>tf2</depend>
@@ -19,7 +20,10 @@
   <depend>se2_grid_core</depend>
   <depend>se2_grid_ros</depend>
   <depend>se2_grid_msgs</depend>
+  <depend>eigen</depend>
+  <depend>boost</depend>
   <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>nlohmann_json</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

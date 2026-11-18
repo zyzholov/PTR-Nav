@@ -1,0 +1,16 @@
+--- src/mrmap.cpp
++++ src/mrmap.cpp
+@@ -664,7 +664,7 @@
+             }
+         }
+ 
+-        if(!cluster_aggressive_twice)
++        if(cluster_aggressive_twice)
+         {
+             // 在aggressive的邻域内继续聚类
+             for(Index& voxel_idx : aggressive_voxel_list)
+@@ -894,4 +894,4 @@
+         }
+     }
+ }
+-}+}

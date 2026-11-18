@@ -33,6 +33,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 #include <omp.h>
+#include <atomic>
 #include <algorithm>
 #include <mutex>
 #include <math.h>
@@ -68,6 +69,8 @@
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
 #include "dynamic_voxel_ray.hpp"
+#include "dynamic_map_filter/dufomap_filter.hpp"
+#include "dynamic_map_filter/freedom_filter.hpp"
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -110,6 +113,7 @@ int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudVal
 bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+bool   visual_scan_pub_en = true;
 bool   local_map_pub_en = false;
 bool    is_first_lidar = true;
 double local_map_radius = 12.0, local_map_z_half = 3.0;
@@ -449,6 +453,29 @@ bool sync_packages(MeasureGroup &meas)
     return true;
 }
 
+std::unique_ptr<ptr_dynamic_map::DufomapFilter> dufo_filter;
+std::unique_ptr<ptr_dynamic_map::FreedomFilter> freedom_filter;
+std::unordered_set<dynamic_voxel_ray::Key,dynamic_voxel_ray::Hash> freedom_exclusions;
+ptr_dynamic_map::Metrics freedom_metrics;
+uint64_t freedom_cleared_total=0;
+bool dynamic_registration_filter_enabled=false;
+double dynamic_registration_label_stamp=-1.;
+std::atomic<int> dynamic_registration_rejected{0};
+std::unordered_set<dynamic_voxel_ray::Key,dynamic_voxel_ray::Hash> dynamic_registration_exclusions;
+std::unordered_set<dynamic_voxel_ray::Key,dynamic_voxel_ray::Hash> dufo_exclusions;
+ptr_dynamic_map::Metrics dufo_metrics;
+uint64_t dufo_cleared_total=0;
+double dufo_last_stamp=-1.;
+bool static_map_excluded(const PointType &p) {
+    if(freedom_filter)return freedom_exclusions.count({int64_t(std::floor(p.x/.1f)),
+        int64_t(std::floor(p.y/.1f)),int64_t(std::floor(p.z/.1f))})!=0;
+    if(!dufo_filter)return false;
+    const double size=dufo_filter->resolution();
+    return dufo_exclusions.count({static_cast<int64_t>(std::floor(p.x/size)),
+        static_cast<int64_t>(std::floor(p.y/size)),static_cast<int64_t>(std::floor(p.z/size))})!=0 &&
+        dufo_filter->seenFree({p.x,p.y,p.z});
+}
+
 int process_increments = 0;
 void map_incremental()
 {
@@ -460,6 +487,9 @@ void map_incremental()
     {
         /* transform to world frame */
         pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
+        // Keep all measured scans available to live collision/navigation. Only
+        // the static registration map omits confirmed dynamic-map voxels.
+        if(static_map_excluded(feats_down_world->points[i]))continue;
         /* decide if need add to map */
         if (!Nearest_Points[i].empty() && flg_EKF_inited)
         {
@@ -534,6 +564,8 @@ struct AccumulatedVoxel
 
 using AccumulatedVoxelKey = dynamic_voxel_ray::Key;
 std::unordered_map<AccumulatedVoxelKey, AccumulatedVoxel, dynamic_voxel_ray::Hash> accumulated_map_voxels;
+dynamic_voxel_ray::VoxelPresence accumulated_presence;
+dynamic_voxel_ray::GroundHistory dynamic_ground_history;
 std::deque<BoxPointType> pending_dynamic_deletions;
 struct DynamicClearSeed
 {
@@ -543,6 +575,7 @@ struct DynamicClearSeed
 std::deque<DynamicClearSeed> dynamic_clear_seeds;
 uint64_t dynamic_direct_cleared_total = 0;
 uint64_t dynamic_ground_cleared_total = 0;
+std::array<double,4> accumulated_stage_ms{};
 
 AccumulatedVoxelKey accumulated_voxel_key(const PointType &point, double voxel_size)
 {
@@ -557,8 +590,9 @@ AccumulatedVoxelKey accumulated_voxel_key(const PointType &point, double voxel_s
 void insert_accumulated_point(const PointType &point)
 {
     if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) return;
-    auto [it, inserted] = accumulated_map_voxels.try_emplace(
-        accumulated_voxel_key(point, accumulated_map_effective_voxel_size), AccumulatedVoxel{point});
+    const auto key=accumulated_voxel_key(point, accumulated_map_effective_voxel_size);
+    auto [it, inserted] = accumulated_map_voxels.try_emplace(key, AccumulatedVoxel{point});
+    if (inserted) accumulated_presence.insert(key);
     it->second.hit_frame = accumulated_frame;
     it->second.free_evidence.reset();
     it->second.ground_free_scans = 0;
@@ -572,6 +606,7 @@ void rebuild_accumulated_voxels(double voxel_size)
 
     accumulated_map_effective_voxel_size = std::max(0.05, voxel_size);
     accumulated_map_voxels.clear();
+    accumulated_presence.clear();
     dynamic_clear_seeds.clear();
     accumulated_map_voxels.reserve(points.size());
     for (const auto &point : points) insert_accumulated_point(point);
@@ -606,36 +641,60 @@ void refresh_accumulated_map_cloud()
 void accumulate_map_frame()
 {
     if (feats_down_world->empty()) return;
+    const double begin=omp_get_wtime();
+    accumulated_stage_ms.fill(0.);
     ++accumulated_frame;
+    PointCloudXYZI dense_world;
+    if(accumulated_map_dense || dufo_filter || freedom_filter || (dynamic_map_clear_enabled && dynamic_map_max_rays>0)) {
+        dense_world.resize(feats_undistort->size());
+        for(size_t i=0;i<feats_undistort->size();++i)
+            pointBodyToWorld(&feats_undistort->points[i],&dense_world.points[i]);
+    }
+    if(dufo_filter) {
+        if(lidar_end_time<dufo_last_stamp) {dufo_filter->reset();dufo_exclusions.clear();}
+        dufo_last_stamp=lidar_end_time;
+        std::vector<ptr_dynamic_map::Point> cloud;cloud.reserve(dense_world.size());
+        for(const auto &p:dense_world)cloud.push_back({p.x,p.y,p.z});
+        dufo_metrics=dufo_filter->integrate(cloud,{float(pos_lid.x()),float(pos_lid.y()),float(pos_lid.z())});
+        if(dufo_metrics.reset_for_budget)dufo_exclusions.clear();
+    }
+    if(freedom_filter) {
+        if(lidar_end_time<dufo_last_stamp) {freedom_filter->reset();freedom_exclusions.clear();}
+        dufo_last_stamp=lidar_end_time;
+        std::vector<ptr_dynamic_map::Point> cloud;cloud.reserve(dense_world.size());
+        for(const auto &p:dense_world)cloud.push_back({p.x,p.y,p.z});
+        const M3D rotation=state_point.rot.toRotationMatrix()*state_point.offset_R_L_I.toRotationMatrix();
+        std::array<float,9> r{};for(int i=0;i<3;++i)for(int j=0;j<3;++j)r[3*i+j]=rotation(i,j);
+        freedom_metrics=freedom_filter->integrate(cloud,{float(pos_lid.x()),float(pos_lid.y()),float(pos_lid.z())},r);
+        if(freedom_metrics.reset_for_budget)freedom_exclusions.clear();
+    }
     if (accumulated_map_dense)
     {
         // Keep publication detail independent of the EKF/IKD registration
         // downsampling. These are measured, deskewed returns, not interpolated
         // points; the accumulated voxel budget still bounds memory use.
-        for (const auto &body_point : feats_undistort->points)
+        for (const auto &point : dense_world.points)
         {
-            PointType point;
-            pointBodyToWorld(&body_point, &point);
-            insert_accumulated_point(point);
+            if(!static_map_excluded(point))insert_accumulated_point(point);
         }
     }
     else
     {
-        for (const auto &point : feats_down_world->points) insert_accumulated_point(point);
+        for (const auto &point : feats_down_world->points)if(!static_map_excluded(point))insert_accumulated_point(point);
     }
 
-    if (dynamic_map_clear_enabled && dynamic_map_max_rays > 0)
+    accumulated_stage_ms[0]=1000.*(omp_get_wtime()-begin);
+    if ((dynamic_map_clear_enabled && dynamic_map_max_rays > 0) || dufo_filter || freedom_filter)
     {
+        const double ground_begin=omp_get_wtime();
         struct GroundSpan { float low; float high; };
         // Preserve the Isaac ground-support scale when publication voxels
         // are finer than registration voxels.
         const double coarse_size = std::max(0.40, 2.0 * accumulated_map_effective_voxel_size);
         std::unordered_map<AccumulatedVoxelKey, GroundSpan, dynamic_voxel_ray::Hash> ground_cells;
         ground_cells.reserve(feats_undistort->size());
-        for (const auto &body_point : feats_undistort->points)
+        for (const auto &point : dense_world.points)
         {
-            PointType point;
-            pointBodyToWorld(&body_point, &point);
             if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) continue;
             const AccumulatedVoxelKey key{
                 static_cast<int64_t>(std::floor(point.x / coarse_size)),
@@ -647,34 +706,134 @@ void accumulate_map_frame()
                 it->second.high = std::max(it->second.high, point.z);
             }
         }
+        std::unordered_map<AccumulatedVoxelKey,float,dynamic_voxel_ray::Hash> support_floors;
+        support_floors.reserve(ground_cells.size());
+        if(dufo_filter || freedom_filter) {
+            dynamic_ground_history.begin(lidar_end_time,coarse_size);
+            for(const auto& entry:ground_cells)
+                dynamic_ground_history.observe(entry.first,entry.second.low,entry.second.high);
+        }
         const auto supported_elevated = [&](double x, double y, double z) {
             const int64_t coarse_x = static_cast<int64_t>(std::floor(x / coarse_size));
             const int64_t coarse_y = static_cast<int64_t>(std::floor(y / coarse_size));
-            unsigned int quadrants = 0;
-            for (int gy = -2; gy <= 2; ++gy)
-            {
-                for (int gx = -2; gx <= 2; ++gx)
-                {
-                    const auto observed = ground_cells.find({coarse_x + gx, coarse_y + gy, 0});
-                    if (observed == ground_cells.end() ||
-                        observed->second.high - observed->second.low > 0.20f ||
-                        z - observed->second.low < dynamic_map_ground_min_height) continue;
-                    quadrants |= 1u << ((gx >= 0 ? 1 : 0) + (gy >= 0 ? 2 : 0));
-                }
+            const AccumulatedVoxelKey key{coarse_x,coarse_y,0};
+            auto found=support_floors.find(key);
+            if (found==support_floors.end()) {
+                const float floor=dynamic_voxel_ray::enclosing_ground_floor(coarse_x,coarse_y,
+                    [&](int64_t cx,int64_t cy,float &low,float &high) {
+                        if(dufo_filter || freedom_filter)
+                            return dynamic_ground_history.lookup({cx,cy,0},low,high);
+                        const auto ground=ground_cells.find({cx,cy,0});
+                        if (ground==ground_cells.end()) return false;
+                        low=ground->second.low;high=ground->second.high;return true;
+                    });
+                found=support_floors.emplace(key,floor).first;
             }
-            return __builtin_popcount(quadrants) >= 3;
+            return z-found->second>=dynamic_map_ground_min_height;
         };
         const std::array<double, 3> origin = {pos_lid.x(), pos_lid.y(), pos_lid.z()};
-        const size_t stride = std::max<size_t>(1, (feats_down_world->size() + dynamic_map_max_rays - 1) /
-                                                   dynamic_map_max_rays);
+        if(dufo_filter) {
+            const double size=dufo_filter->resolution();
+            for(const auto &center:dufo_filter->dynamicVoxels()) {
+                // The auxiliary module's persistent free-space label is not
+                // a ground eraser. Preserve measured terrain and unknown-floor
+                // cells; never authorize navigation from these exclusions.
+                if(!supported_elevated(center[0],center[1],center[2]))continue;
+                const dynamic_voxel_ray::Key id{int64_t(std::floor(center[0]/size)),
+                    int64_t(std::floor(center[1]/size)),int64_t(std::floor(center[2]/size))};
+                if(!dufo_exclusions.insert(id).second)continue;
+                BoxPointType box;
+                for(int axis=0;axis<3;++axis) {
+                    box.vertex_min[axis]=center[axis]-.5f*size;
+                    box.vertex_max[axis]=center[axis]+.5f*size;
+                }
+                pending_dynamic_deletions.push_back(box);
+                // Coarse display voxels can overlap a DUFO cell. Check each
+                // retained original point rather than erasing a whole overlap.
+                const double v=accumulated_map_effective_voxel_size;
+                for(int64_t x=std::floor(box.vertex_min[0]/v);x<=std::floor(box.vertex_max[0]/v);++x)
+                for(int64_t y=std::floor(box.vertex_min[1]/v);y<=std::floor(box.vertex_max[1]/v);++y)
+                for(int64_t z=std::floor(box.vertex_min[2]/v);z<=std::floor(box.vertex_max[2]/v);++z) {
+                    AccumulatedVoxelKey key{x,y,z};auto found=accumulated_map_voxels.find(key);
+                    if(found==accumulated_map_voxels.end())continue;
+                    const auto &p=found->second.point;
+                    if(!dufo_filter->seenFree({p.x,p.y,p.z}) || !supported_elevated(p.x,p.y,p.z))continue;
+                    accumulated_presence.erase(key);accumulated_map_voxels.erase(found);++dufo_cleared_total;
+                }
+            }
+        }
+        if(freedom_filter) {
+            // FreeDOM labels are inferred dynamic-object membership, not
+            // measured free ground. Preserve the ground veto and never pass
+            // these labels to navigation as observations. Reversion in the
+            // upstream map is respected by refreshing (not latching) labels.
+            decltype(freedom_exclusions) current;
+            current.reserve(freedom_filter->dynamicPoints().size());
+            constexpr float size=.1f;
+            for(const auto &p:freedom_filter->dynamicPoints()) {
+                const dynamic_voxel_ray::Key id{int64_t(std::floor(p[0]/size)),
+                    int64_t(std::floor(p[1]/size)),int64_t(std::floor(p[2]/size))};
+                if(!freedom_exclusions.count(id) && !supported_elevated(p[0],p[1],p[2]))continue;
+                const std::array<int64_t,3> index{id.x,id.y,id.z};
+                std::array<std::array<float,2>,3> bounds;
+                bool supported_box=true;
+                for(int axis=0;axis<3;++axis)
+                    supported_box &= dynamic_voxel_ray::float_label_interval(index[axis],size,bounds[axis]);
+                if(!supported_box)continue;
+                if(!current.insert(id).second)continue;
+                if(!freedom_exclusions.count(id)) {
+                    BoxPointType box;
+                    for(int axis=0;axis<3;++axis) {
+                        box.vertex_min[axis]=bounds[axis][0];
+                        box.vertex_max[axis]=bounds[axis][1];
+                    }
+                    pending_dynamic_deletions.push_back(box);
+                }
+                const double v=accumulated_map_effective_voxel_size;
+                for(int64_t x=std::floor(double(bounds[0][0])/v);x<=std::floor(double(bounds[0][1])/v);++x)
+                for(int64_t y=std::floor(double(bounds[1][0])/v);y<=std::floor(double(bounds[1][1])/v);++y)
+                for(int64_t z=std::floor(double(bounds[2][0])/v);z<=std::floor(double(bounds[2][1])/v);++z) {
+                    const AccumulatedVoxelKey key{x,y,z};auto found=accumulated_map_voxels.find(key);
+                    if(found==accumulated_map_voxels.end())continue;
+                    const auto &q=found->second.point;
+                    const dynamic_voxel_ray::Key qid{int64_t(std::floor(q.x/size)),
+                        int64_t(std::floor(q.y/size)),int64_t(std::floor(q.z/size))};
+                    if(!(qid==id))continue;
+                    accumulated_presence.erase(key);accumulated_map_voxels.erase(found);++freedom_cleared_total;
+                }
+            }
+            freedom_exclusions=std::move(current);
+            // Historic dynamic membership alone is insufficient. Require an
+            // actual return from THIS source scan and recheck its independent
+            // ground support before it may affect the NEXT registration.
+            dynamic_registration_exclusions.clear();
+            if(dynamic_registration_filter_enabled)for(const auto &p:dense_world.points)
+                if(static_map_excluded(p)&&supported_elevated(p.x,p.y,p.z))
+                    dynamic_registration_exclusions.insert({int64_t(std::floor(p.x/.1f)),
+                        int64_t(std::floor(p.y/.1f)),int64_t(std::floor(p.z/.1f))});
+            dynamic_registration_label_stamp=lidar_end_time;
+        }
+        accumulated_stage_ms[1]=1000.*(omp_get_wtime()-ground_begin);
+        const double ray_begin=omp_get_wtime();
+        // A voxel-filtered registration point is generally a centroid, not
+        // an observed beam endpoint. Its ray may miss a cleared old voxel or
+        // invent free-space evidence between two real returns. Keep the EKF
+        // sampling unchanged; use actual deskewed returns for free-ray proof.
+        const auto &ray_returns=dense_world;
+        const size_t stride = dynamic_map_max_rays>0 && dynamic_map_clear_enabled ?
+            std::max<size_t>(1,(ray_returns.size()+dynamic_map_max_rays-1)/dynamic_map_max_rays) :
+            ray_returns.size()+1;
         std::vector<AccumulatedVoxelKey> erased;
-        for (size_t i = 0; i < feats_down_world->size(); i += stride)
+        for (size_t i = dynamic_map_clear_enabled && dynamic_map_max_rays>0 ? 0 : ray_returns.size();
+             i < ray_returns.size(); i += stride)
         {
-            const auto &point = feats_down_world->points[i];
+            const auto &point = ray_returns.points[i];
             const std::array<double, 3> endpoint = {point.x, point.y, point.z};
-            dynamic_voxel_ray::traverse(
+            dynamic_voxel_ray::VoxelPresence::Cache presence_cache;
+            dynamic_voxel_ray::traverse_candidates(
                 origin, endpoint, accumulated_map_effective_voxel_size,
                 dynamic_map_ray_range, dynamic_map_endpoint_margin,
+                [&](const AccumulatedVoxelKey &key) {return accumulated_presence.contains(key,presence_cache);},
                 [&](const AccumulatedVoxelKey &key) {
                     auto it = accumulated_map_voxels.find(key);
                     if (it == accumulated_map_voxels.end() || it->second.hit_frame == accumulated_frame ||
@@ -689,10 +848,12 @@ void accumulate_map_frame()
                             accumulated_frame, static_cast<uint8_t>(dynamic_map_clear_frames),
                             static_cast<uint32_t>(dynamic_map_clear_max_gap_frames))) return;
                     erased.push_back(key);
+                    accumulated_presence.erase(key);
                     accumulated_map_voxels.erase(it);
                 });
         }
         const size_t directly_cleared = erased.size();
+        accumulated_stage_ms[2]=1000.*(omp_get_wtime()-ray_begin);
         std::vector<AccumulatedVoxelKey> tree_erased(erased.begin(), erased.end());
         dynamic_direct_cleared_total += directly_cleared;
         for (size_t i = 0; i < directly_cleared; ++i)
@@ -788,7 +949,10 @@ void accumulate_map_frame()
             for (const auto &key : erased)
             {
                 const auto it = accumulated_map_voxels.find(key);
-                if (it != accumulated_map_voxels.end()) accumulated_map_voxels.erase(it);
+                if (it != accumulated_map_voxels.end()) {
+                    accumulated_presence.erase(key);
+                    accumulated_map_voxels.erase(it);
+                }
             }
         }
 
@@ -922,6 +1086,7 @@ void accumulate_map_frame()
                         if (++it->second.ground_free_scans >= 1)
                         {
                             erased.push_back(key);
+                            accumulated_presence.erase(key);
                             accumulated_map_voxels.erase(it);
                         }
                     },
@@ -945,6 +1110,7 @@ void accumulate_map_frame()
         }
         if (!pending_dynamic_deletions.empty() && ikdtree.Root_Node != nullptr)
         {
+            const double delete_begin=omp_get_wtime();
             std::vector<BoxPointType> boxes;
             const size_t count = std::min<size_t>(256, pending_dynamic_deletions.size());
             boxes.reserve(count);
@@ -954,32 +1120,30 @@ void accumulate_map_frame()
                 pending_dynamic_deletions.pop_front();
             }
             ikdtree.Delete_Point_Boxes(boxes);
+            accumulated_stage_ms[3]=1000.*(omp_get_wtime()-delete_begin);
         }
     }
     enforce_accumulated_map_budget();
+}
+
+void publish_registered_cloud(const PointCloudXYZI::Ptr &cloud,
+                             rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher)
+{
+    PointCloudXYZI world(cloud->size(), 1);
+    for (size_t i = 0; i < cloud->size(); ++i)
+        RGBpointBodyToWorld(&cloud->points[i], &world.points[i]);
+    sensor_msgs::msg::PointCloud2 msg;
+    pcl::toROSMsg(world, msg);
+    msg.header.stamp = get_ros_time(lidar_end_time);
+    msg.header.frame_id = map_frame;
+    publisher->publish(msg);
 }
 
 void publish_frame_world(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull)
 {
     if(scan_pub_en)
     {
-        PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
-        int size = laserCloudFullRes->points.size();
-        PointCloudXYZI::Ptr laserCloudWorld( \
-                        new PointCloudXYZI(size, 1));
-
-        for (int i = 0; i < size; i++)
-        {
-            RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-                                &laserCloudWorld->points[i]);
-        }
-
-        sensor_msgs::msg::PointCloud2 laserCloudmsg;
-        pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-        // laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-        laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
-        laserCloudmsg.header.frame_id = map_frame;
-        pubLaserCloudFull->publish(laserCloudmsg);
+        publish_registered_cloud(dense_pub_en ? feats_undistort : feats_down_body, pubLaserCloudFull);
         publish_count -= PUBFRAME_PERIOD;
     }
 
@@ -1185,6 +1349,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     laserCloudOri->clear(); 
     corr_normvect->clear(); 
     total_residual = 0.0; 
+    dynamic_registration_rejected.store(0,std::memory_order_relaxed);
 
     /** closest surface search and residual computation **/
     #ifdef MP_EN
@@ -1203,6 +1368,20 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         point_world.y = p_global(1);
         point_world.z = p_global(2);
         point_world.intensity = point_body.intensity;
+
+        // FreeDOM's preceding source labels already passed the independent
+        // elevated-ground veto above. A point may be excluded from this EKF
+        // association without being deleted from feats_down_body/undistorted
+        // scan: terrain analysis must still see every physical obstacle.
+        if(dynamic_voxel_ray::fresh_registration_label(dynamic_registration_filter_enabled,
+             lidar_end_time,dynamic_registration_label_stamp,
+             dynamic_registration_filter_enabled&&dynamic_registration_exclusions.count({
+                 int64_t(std::floor(point_world.x/.1f)),int64_t(std::floor(point_world.y/.1f)),
+                 int64_t(std::floor(point_world.z/.1f))})!=0)) {
+            point_selected_surf[i]=false;
+            dynamic_registration_rejected.fetch_add(1,std::memory_order_relaxed);
+            continue;
+        }
 
         vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
 
@@ -1308,6 +1487,7 @@ public:
         this->declare_parameter<bool>("publish.map_en", false);
         this->declare_parameter<bool>("publish.scan_publish_en", true);
         this->declare_parameter<bool>("publish.dense_publish_en", true);
+        this->declare_parameter<bool>("publish.visual_scan_en", true);
         this->declare_parameter<bool>("publish.scan_bodyframe_pub_en", true);
         this->declare_parameter<bool>("publish.local_map_en", true);
         this->declare_parameter<double>("publish.local_map_radius", 12.0);
@@ -1317,6 +1497,9 @@ public:
         this->declare_parameter<int>("publish.map_max_points", 800000);
         this->declare_parameter<bool>("publish.map_dense_en", false);
         this->declare_parameter<bool>("mapping.dynamic_clear_enabled", false);
+        this->declare_parameter<string>("mapping.dynamic_filter_backend", "none");
+        this->declare_parameter<bool>("mapping.freedom_raycast_enhancement", false);
+        this->declare_parameter<bool>("mapping.dynamic_registration_filter_enabled",false);
         this->declare_parameter<bool>("mapping.dynamic_expand_enabled", false);
         this->declare_parameter<int>("mapping.dynamic_clear_frames", 3);
         this->declare_parameter<int>("mapping.dynamic_clear_max_gap_frames", 3);
@@ -1364,6 +1547,8 @@ public:
         this->declare_parameter<bool>("feature_extract_enable", false);
         this->declare_parameter<bool>("runtime_pos_log_enable", false);
         this->declare_parameter<bool>("mapping.extrinsic_est_en", true);
+        this->declare_parameter<double>("mapping.imu_init_rest_sec",0.0);
+        this->declare_parameter<bool>("mapping.gravity_align_on_init",false);
         this->declare_parameter<bool>("pcd_save.pcd_save_en", false);
         this->declare_parameter<int>("pcd_save.interval", -1);
         this->declare_parameter<vector<double>>("mapping.extrinsic_T", vector<double>());
@@ -1378,6 +1563,7 @@ public:
         this->get_parameter_or<bool>("publish.map_en", map_pub_en, false);
         this->get_parameter_or<bool>("publish.scan_publish_en", scan_pub_en, true);
         this->get_parameter_or<bool>("publish.dense_publish_en", dense_pub_en, true);
+        this->get_parameter_or<bool>("publish.visual_scan_en", visual_scan_pub_en, true);
         this->get_parameter_or<bool>("publish.scan_bodyframe_pub_en", scan_body_pub_en, true);
         this->get_parameter_or<bool>("publish.local_map_en", local_map_pub_en, true);
         this->get_parameter_or<double>("publish.local_map_radius", local_map_radius, 12.0);
@@ -1387,6 +1573,23 @@ public:
         this->get_parameter_or<int>("publish.map_max_points", accumulated_map_max_points, 800000);
         this->get_parameter_or<bool>("publish.map_dense_en", accumulated_map_dense, false);
         this->get_parameter_or<bool>("mapping.dynamic_clear_enabled", dynamic_map_clear_enabled, false);
+        const auto dynamic_backend=this->get_parameter("mapping.dynamic_filter_backend").as_string();
+        dynamic_registration_filter_enabled=this->get_parameter("mapping.dynamic_registration_filter_enabled").as_bool();
+        if(dynamic_registration_filter_enabled&&dynamic_backend!="freedom")
+            throw std::invalid_argument("dynamic registration filtering requires the FreeDOM source-label backend");
+        if(dynamic_backend!="none" && dynamic_backend!="dufomap" && dynamic_backend!="freedom")
+            throw std::invalid_argument("mapping.dynamic_filter_backend must be none, dufomap or freedom");
+        if(dynamic_backend=="dufomap") {
+            dufo_filter=std::make_unique<ptr_dynamic_map::DufomapFilter>();
+            RCLCPP_INFO(get_logger(),"Static-map auxiliary filter: official DUFOMap/UFOMap pinned core; current scans remain unfiltered");
+        }
+        if(dynamic_backend=="freedom") {
+            const bool enhanced=this->get_parameter("mapping.freedom_raycast_enhancement").as_bool();
+            freedom_filter=std::make_unique<ptr_dynamic_map::FreedomFilter>(enhanced);
+            RCLCPP_INFO(get_logger(),"Static-map auxiliary filter: pinned FreeDOM core, depth enhancement=%s; inferred history labels only; current scans remain unfiltered",enhanced?"true":"false");
+        }
+        if(dynamic_registration_filter_enabled)RCLCPP_INFO(get_logger(),
+          "FreeDOM registration exclusion enabled: preceding-source labels <=250ms only; full current scan remains published");
         this->get_parameter_or<bool>("mapping.dynamic_expand_enabled", dynamic_map_expand_enabled, false);
         this->get_parameter_or<int>("mapping.dynamic_clear_frames", dynamic_map_clear_frames, 3);
         this->get_parameter_or<int>("mapping.dynamic_clear_max_gap_frames", dynamic_map_clear_max_gap_frames, 3);
@@ -1517,6 +1720,8 @@ public:
             RCLCPP_WARN(this->get_logger(), "frame.body_pose_R must contain 9 values. Falling back to identity rotation offset.");
         }
         p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+        p_imu->set_initialization(this->get_parameter("mapping.imu_init_rest_sec").as_double(),
+                                  this->get_parameter("mapping.gravity_align_on_init").as_bool());
         p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
         p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
         p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
@@ -1548,8 +1753,11 @@ public:
         {
             sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
         }
-        sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 10, imu_cbk);
+        // Keep the 200 Hz IMU sequence through a bounded mapping callback
+        // delay; depth 10 retains only 50 ms before the next executor spin.
+        sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 200, imu_cbk);
         pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 20);
+        pubLaserCloudVisual_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered_visual", 1);
         pubLaserCloudFull_body_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered_body", 20);
         pubLaserCloudEffect_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_effected", 20);
         // Keep the latest global map available to RViz and to analysis nodes
@@ -1558,7 +1766,10 @@ public:
         map_qos.reliable().transient_local();
         pubLaserCloudMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", map_qos);
         pubLaserCloudLocalMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_local_map", 20);
-        pubOdomAftMapped_ = this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 20);
+        // This is a current state stream. A late/recovering reliable reader
+        // must not drain two seconds of retained states before reaching now.
+        pubOdomAftMapped_ = this->create_publisher<nav_msgs::msg::Odometry>(
+            "/Odometry", rclcpp::QoS(rclcpp::KeepLast(1)).reliable().durability_volatile());
         pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 20);
         tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
@@ -1653,7 +1864,7 @@ private:
                         pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
                     }
                     ikdtree.Build(feats_down_world->points);
-                    if (map_pub_en || pcd_save_en || dynamic_map_clear_enabled) accumulate_map_frame();
+                    if (map_pub_en || pcd_save_en || dynamic_map_clear_enabled || dufo_filter || freedom_filter) accumulate_map_frame();
                 }
                 return;
             }
@@ -1707,23 +1918,57 @@ private:
 
             /******* Publish odometry *******/
             publish_odometry(pubOdomAftMapped_, tf_broadcaster_);
+            // Navigation needs this corrected scan, not completion of the
+            // accumulated display map and its visibility-cleanup workload.
+            // Neither incremental insertion nor cleanup changes the pose or
+            // body-frame points used by publish_frame_world().
+            const double scan_publish_begin=omp_get_wtime();
+            if (scan_pub_en) publish_frame_world(pubLaserCloudFull_);
+            const double scan_publish_ms=1000.*(omp_get_wtime()-scan_publish_begin);
+            // Full measured returns also support current collision/motion
+            // detection and floor clearance. Publish the same corrected frame
+            // before history work rather than delaying it behind that work.
+            const double visual_publish_begin=omp_get_wtime();
+            if (visual_scan_pub_en && pubLaserCloudVisual_->get_subscription_count()>0)
+                publish_registered_cloud(feats_undistort, pubLaserCloudVisual_);
+            const double visual_publish_ms=1000.*(omp_get_wtime()-visual_publish_begin);
 
             /*** add the feature points to map kdtree ***/
             t3 = omp_get_wtime();
             map_incremental();
-            if (map_pub_en || pcd_save_en || dynamic_map_clear_enabled) accumulate_map_frame();
+            t4 = omp_get_wtime();
+            if (map_pub_en || pcd_save_en || dynamic_map_clear_enabled || dufo_filter || freedom_filter) accumulate_map_frame();
             t5 = omp_get_wtime();
             
             /******* Publish points *******/
             if (path_en)                         publish_path(pubPath_);
-            if (scan_pub_en)      publish_frame_world(pubLaserCloudFull_);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body_);
             if (effect_pub_en) publish_effect_world(pubLaserCloudEffect_);
             if (local_map_pub_en) publish_local_map(pubLaserCloudLocalMap_);
             RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                "Cloud detail: deskewed=%zu registration=%d accumulated=%zu voxel=%.3fm processing=%.1fms",
+                "Cloud detail: deskewed=%zu registration=%d accumulated=%zu voxel=%.3fm processing=%.1fms "
+                "pre_imu=%.1fms ekf=%.1fms increment=%.1fms history_clear=%.1fms publish=%.1fms "
+                "history_insert=%.1fms ground_table=%.1fms rays=%.1fms tree_delete=%.1fms scan_early=%.1fms visual_scan=%.1fms",
                 feats_undistort->size(), feats_down_size, accumulated_map_voxels.size(),
-                accumulated_map_effective_voxel_size, 1000.0 * (omp_get_wtime() - t0));
+                accumulated_map_effective_voxel_size, 1000.0 * (omp_get_wtime() - t0),
+                1000.0*(t1-t0),1000.0*(t_update_end-t_update_start),1000.0*(t4-t3),
+                1000.0*(t5-t4),1000.0*(omp_get_wtime()-t5),accumulated_stage_ms[0],
+                accumulated_stage_ms[1],accumulated_stage_ms[2],accumulated_stage_ms[3],scan_publish_ms,visual_publish_ms);
+            if(dufo_filter)RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),5000,
+                "DUFOMap auxiliary: integrate=%.2fms nodes=%zu memory=%.1fMiB exclusions=%zu removed=%llu reset=%s; raw current scan unchanged",
+                dufo_metrics.integration_ms,dufo_metrics.nodes,dufo_metrics.memory_bytes/(1024.*1024.),
+                dufo_exclusions.size(),static_cast<unsigned long long>(dufo_cleared_total),
+                dufo_metrics.reset_for_budget ? "budget" : "no");
+            if(freedom_filter)RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),5000,
+                "FreeDOM auxiliary: integrate=%.2fms nodes=%zu labels=%zu removed=%llu reset=%s ground_memory=%zu registration_rejected=%d; raw current scan unchanged",
+                freedom_metrics.integration_ms,freedom_metrics.nodes,freedom_exclusions.size(),
+                static_cast<unsigned long long>(freedom_cleared_total),freedom_metrics.reset_for_budget ? "budget" : "no",dynamic_ground_history.size(),dynamic_registration_rejected.load());
+            if(omp_get_wtime()-t0>.080)
+                RCLCPP_WARN(this->get_logger(),
+                    "Slow mapping frame: stamp=%.6f total=%.1fms pre_imu=%.1fms ekf=%.1fms "
+                    "increment=%.1fms history_clear=%.1fms scan_early=%.1fms",
+                    lidar_end_time,1000.*(omp_get_wtime()-t0),1000.*(t1-t0),
+                    1000.*(t_update_end-t_update_start),1000.*(t4-t3),1000.*(t5-t4),scan_publish_ms);
             /*** Debug variables ***/
             if (runtime_pos_log)
             {
@@ -1797,6 +2042,7 @@ private:
 
 private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudVisual_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull_body_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudEffect_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap_;

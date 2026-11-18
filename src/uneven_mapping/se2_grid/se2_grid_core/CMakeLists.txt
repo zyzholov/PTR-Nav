@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.5.1)
 project(se2_grid_core)
 
+# Grid interpolation and Eigen buffer conversion are runtime hot paths. Keep
+# explicit Debug/RelWithDebInfo choices, but do not silently build them at -O0
+# when the workspace is built with ordinary colcon defaults.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_compile_options(-Wall -Wextra -Wpedantic)

@@ -20,6 +20,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include "use-ikfom.hpp"
+#include "imu_initialization.hpp"
 
 /// *************Preconfiguration
 
@@ -46,6 +47,12 @@ class ImuProcess
   void set_acc_cov(const V3D &scaler);
   void set_gyr_bias_cov(const V3D &b_g);
   void set_acc_bias_cov(const V3D &b_a);
+  void set_initialization(double rest_duration,bool gravity_align) {
+    if(!std::isfinite(rest_duration) || rest_duration<0 || rest_duration>5.)
+      throw std::invalid_argument("IMU initialization rest duration must be in [0,5]");
+    rest_duration_=rest_duration;gravity_align_=gravity_align;
+    quiet_imu_=fast_lio::QuietImuWindow(rest_duration>0?rest_duration:1.);
+  }
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
 
@@ -79,6 +86,9 @@ class ImuProcess
   int    init_iter_num = 1;
   bool   b_first_frame_ = true;
   bool   imu_need_init_ = true;
+  double rest_duration_=0;
+  bool gravity_align_=false;
+  fast_lio::QuietImuWindow quiet_imu_;
 };
 
 ImuProcess::ImuProcess()
@@ -189,8 +199,14 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
 
     N ++;
   }
+  if(rest_duration_>0 && !quiet_imu_.estimate(mean_acc,mean_gyr))
+    throw std::logic_error("IMU initialization requires a complete quiet window");
   state_ikfom init_state = kf_state.get_x();
   init_state.grav = S2(- mean_acc / mean_acc.norm() * G_m_s2);
+  if(gravity_align_) {
+    init_state.rot=SO3(fast_lio::gravityAlignment(mean_acc));
+    init_state.grav=S2(V3D(0,0,-G_m_s2));
+  }
   
   //state_inout.rot = Eye3d; // Exp(mean_acc.cross(V3D(0, 0, -1 / scale_gravity)));
   init_state.bg  = mean_gyr;
@@ -346,6 +362,14 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
 
   if (imu_need_init_)
   {
+    if(rest_duration_>0) {
+      for(const auto &imu:meas.imu) {
+        const auto &a=imu->linear_acceleration;const auto &g=imu->angular_velocity;
+        quiet_imu_.add(imu->header.stamp.sec+1e-9*imu->header.stamp.nanosec,
+                       V3D(a.x,a.y,a.z),V3D(g.x,g.y,g.z));
+      }
+      V3D a,g;if(!quiet_imu_.estimate(a,g))return;
+    }
     /// The very first lidar frame
     IMU_init(meas, kf_state, init_iter_num);
 
@@ -362,6 +386,9 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
       cov_acc = cov_acc_scale;
       cov_gyr = cov_gyr_scale;
       std::cout << "IMU Initial Done" << std::endl;
+      std::cout << "IMU map initialization: gravity_aligned=" << gravity_align_
+                << " quiet_window_s=" << rest_duration_ << " specific_force=" << mean_acc.transpose()
+                << " gravity=" << imu_state.grav << std::endl;
       // ROS_INFO("IMU Initial Done: Gravity: %.4f %.4f %.4f %.4f; state.bias_g: %.4f %.4f %.4f; acc covarience: %.8f %.8f %.8f; gry covarience: %.8f %.8f %.8f",\
       //          imu_state.grav[0], imu_state.grav[1], imu_state.grav[2], mean_acc.norm(), cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
       fout_imu.open(DEBUG_FILE_DIR("imu.txt"),ios::out);

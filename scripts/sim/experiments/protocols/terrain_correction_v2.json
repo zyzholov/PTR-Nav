@@ -1,0 +1,53 @@
+{
+  "study_id": "PTR-TERRAIN-DIAG-02",
+  "date": "2026-10-15",
+  "scope": "Targeted correction verification before resuming large experiments; no external baseline or new physical navigation claim.",
+  "diagnosis": {
+    "source_audit": "all 300 original generated geometries, grouped by shader mode; source coordinate consistency and complete-input resampling error",
+    "branch_audit": "40 source-round-robin development inputs, three conditions; preserve raw/all-hidden, accepted, local/global and naturally absent denominators",
+    "parameter_controls": "20 development inputs x three conditions x four variants; distance/lengthscale relaxation not adopted because of regressions"
+  },
+  "data_correction": {
+    "original_profile": "legacy_v1: H in [1,1.6] for every mode; Swiss branch uses H as multiplicative gain",
+    "corrected_profile": "metric_v2: only Swiss gain sampled in [0.35,0.65], three fBm modes unchanged; no clipping or smoothing of exported geometry",
+    "paired_inputs": 24,
+    "conditions": [
+      "point15",
+      "hole16",
+      "frontier50"
+    ],
+    "source_pair_computations": 144,
+    "control": "same seeds, windows, masks and noise, frozen old predictor on both geometry profiles; data correction must not be attributed to model improvement"
+  },
+  "method_correction": {
+    "change": "Convex-hull support of all measured XY; exact angular enclosure for local neighbors, not axis-wise bracketing",
+    "unchanged": "GP training/inducing budgets and kernel length, local nearest limit 0.35m, uncertainty gates, unknown completion off",
+    "targeted_validation": "60 new corrected generated geometries, 9 rebuilt SuMa road inputs from 3 development-unused sequence groups and 11 development-unused indoor groups",
+    "new_generated_seed": 261215951,
+    "planned_inputs": 80,
+    "conditions": [
+      "point15",
+      "hole16",
+      "frontier50"
+    ],
+    "method_pair_computations": 480,
+    "checks": [
+      "no accepted or locally completed exterior-hull query",
+      "identical observations across method pairs",
+      "finite predictions and variance",
+      "CPU/CUDA consistency",
+      "risk confusion changes reported without deleting failures"
+    ]
+  },
+  "limitations": "The unsupported raw mean may still have large extrapolation error. Convex-hull support is not a physical passability guarantee, and sparse real references remain proxies. Old Swiss geometries remain a separate under-resolved pressure stratum, not deleted.",
+  "previous_protocol": "terrain_correction_v1.json",
+  "road_registration_correction": {
+    "reason": "Initial source-disjoint regression exposed severe vertical inconsistency of GPS/IMU-registered sequence 08. Reconstruct same selected scans with official SemanticKITTI SuMa poses; no manual Z correction or ICP.",
+    "source": "https://www.semantic-kitti.org/dataset.html",
+    "frames": 9,
+    "source_groups": 3,
+    "data_pair_computations": 54,
+    "source_checks": "cross-scan XY-nearest Z residuals with both pose alternatives; reference remains a proxy, not gravity-certified truth"
+  }
+}
+

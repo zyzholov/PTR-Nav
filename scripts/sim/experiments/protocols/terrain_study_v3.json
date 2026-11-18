@@ -1,0 +1,47 @@
+{
+  "study_id": "PTR-TERRAIN-SYSTEM-03",
+  "date": "2026-10-15",
+  "scope": "Own-method component experiments after source/support correction. No external baseline, temporal BGK reproduction, or physics-navigation claim.",
+  "seed": 261415951,
+  "public": {
+    "generated_per_family": 30,
+    "generated_seed": 261315951,
+    "reused_corrected_road_inputs": 9,
+    "reused_indoor_inputs": 11,
+    "conditions": ["point15", "point30", "point60", "hole08", "hole16", "hole32", "frontier25", "frontier50"],
+    "planned_cases": 880
+  },
+  "mechanism": {
+    "families": ["flat", "slope_safe", "slope_boundary", "waves", "ridge", "step_low", "step_high", "column"],
+    "seeds_per_family": 20,
+    "conditions": ["point30", "hole16", "frontier50"],
+    "planned_cases": 480,
+    "size": 64
+  },
+  "resolution_m": 0.2,
+  "yaw_bins": 36,
+  "noise_std_m": 0.02,
+  "risk_threshold": 0.58,
+  "nominal_levels": [0.5, 0.8, 0.9, 0.95, 0.99],
+  "distance_edges_m": [0, 0.2, 0.35, 0.7, 1.2, 100],
+  "deployment_contract": "Prediction diagnostic enabled at default 384 train/96 inducing budgets; measured-only navigation surface, no unknown completion and no GP observed refinement. This isolates the opt-in prediction diagnostic from the deployed risk input. Offline occupancy prior differs from the ROS upstream pose-risk prior.",
+  "gates": {
+    "accepted_outside_hull": 0,
+    "accepted_hidden_rmse_m": 0.10,
+    "accepted_hidden_picp95_min": 0.90,
+    "unsafe_false_negative_rate_max": 0.01,
+    "risk_latency_p95_ms": 100,
+    "planner_latency_p95_ms": 500,
+    "interpretation": "Engineering screening targets declared before this batch, not literature standards. Empty accepted domains are not a pass. Latency gates apply only to named components. Unsafe reference denominators are always reported."
+  },
+  "planning": {
+    "per_scenario": 10,
+    "repeats": 3,
+    "seed": 261515951,
+    "planned_queries": 100,
+    "planned_calls": 300,
+    "role": "Bounded integration diagnosis on measured-only fresh maps, not a safety-qualified deployment. Full safe connector, safe partial path, unsafe path, and refusal are separate outcomes."
+  },
+  "statistics": "One geometry/source group is the statistical unit. Repeated masks, yaw states, noise seeds on flat geometry, and planner timing repeats do not create independent environments. Bootstrap source groups; disclose only 3 road sequence groups.",
+  "reference": "Generated dense surface and analytic geometry give controlled 2.5D references; public road/indoor give sparse semantic/mesh proxies only where finite. Artificially withheld cells were observed before masking. Naturally missing cells are separate and not scored without finite reference."
+}

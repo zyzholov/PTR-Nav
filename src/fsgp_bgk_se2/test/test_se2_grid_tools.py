@@ -50,3 +50,22 @@ def test_world_axes_and_circular_buffer(start):
     assert native.shape == (7, 5)
     assert native[start[0], start[1]] == world[-1, -1]
     np.testing.assert_array_equal(grid_buffer_to_world(native, msg), world)
+
+
+@pytest.mark.parametrize('shape',[(1,7),(8,1),(5,7),(8,9),(0,3),(3,0)])
+@pytest.mark.parametrize('view',['contiguous','transpose','strided'])
+def test_permutation_is_bit_exact_to_roll_reference_and_owns_output(shape,view):
+    bits=np.resize(np.array([0x7fc01234,0x80000000,0,0x7f800000,0xff800000,1,0x3f800000],np.uint32),shape)
+    matrix=bits.view(np.float32)
+    if view=='transpose':matrix=matrix.T
+    if view=='strided':matrix=matrix[::-1,::-1]
+    for a,b in [(0,0),(2,3),(-7,12),(17,-24)]:
+        msg=SimpleNamespace(start_index_row=a,start_index_col=b)
+        world=grid_buffer_to_world(matrix,msg)
+        expected=np.ascontiguousarray(np.roll(matrix,(-a,-b),axis=(0,1))[::-1,::-1].T)
+        assert world.shape==expected.shape and world.tobytes()==expected.tobytes()
+        assert world.flags.c_contiguous and not np.shares_memory(world,matrix)
+        native=world_to_grid_buffer(matrix,msg)
+        expected=np.roll(matrix.T[::-1,::-1],(a,b),axis=(0,1))
+        assert native.shape==expected.shape and native.tobytes()==expected.tobytes()
+        assert not np.shares_memory(native,matrix)

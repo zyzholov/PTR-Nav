@@ -1,0 +1,82 @@
+{
+  "study_id": "PTR-COMPREHENSIVE-04",
+  "date": "2026-10-15",
+  "seed": 261715951,
+  "scope": "Own-method study, post-correction. Separate source diversity, paired robustness, discretization, runtime, native planning and kinematic closed loops. No external comparison or new PhysX result.",
+  "resolution_m": 0.2,
+  "yaw_bins": 36,
+  "noise_std_m": 0.02,
+  "risk_threshold": 0.58,
+  "nominal_levels": [0.5, 0.8, 0.9, 0.95, 0.99],
+  "distance_edges_m": [0, 0.2, 0.35, 0.7, 1.2, 100],
+  "public": {
+    "generated_per_family": 100,
+    "generated_seed": 261615951,
+    "road_inputs": 100,
+    "indoor_inputs": 100,
+    "conditions": ["point15", "point30", "point60", "hole08", "hole16", "hole32", "frontier25", "frontier50"],
+    "planned_cases": 4000,
+    "reference": "300 new generated geometries, 100 re-registered SuMa road submaps across 11 sequences, 100 reused indoor inputs across 49 layouts. Sparse public references remain proxies. No score-based exclusion."
+  },
+  "mechanism": {
+    "families": ["flat", "slope_safe", "slope_boundary", "waves", "ridge", "step_low", "step_high", "column"],
+    "seeds_per_family": 50,
+    "size": 64,
+    "conditions": ["point30", "hole16", "frontier50"],
+    "noise_levels_m": [0, 0.02, 0.05],
+    "planned_cases": 3600,
+    "pairing": "Identical geometry, point deletion, standardized Z perturbations and reference within each noise triplet. GP observation-noise model stays 0.02m; risk input variance follows known injected noise. Tests robustness of this configured pipeline, not sensor-noise estimation. Flat seeds are repeated noise trials, one geometry group."
+  },
+  "discretization": {
+    "families": ["slope_boundary", "ridge", "step_high", "column"],
+    "geometries_per_family": 20,
+    "resolution_m": [0.1, 0.2, 0.4],
+    "yaw_bins": [18, 36, 72],
+    "planned_cases": 720,
+    "reference_yaw_bins": 72,
+    "scope": "Measured dense analytic surface -> occupancy/BGK/SEB, no GP. Zero injected noise to isolate discretization. Same 121 physical centers and 72 physical headings across all nine settings; coarse yaw layer selected by containing bin, never change the oracle query set."
+  },
+  "scaling": {
+    "seed": 261715952,
+    "sizes": [48, 104, 160],
+    "yaw_bins": [18, 36, 72],
+    "backends": ["cpu", "cupy"],
+    "resolution_m": 0.2,
+    "warmup_calls": 8,
+    "measured_calls": 30,
+    "planned_measured_calls": 540,
+    "scope": "BgkSebEstimator.compute synchronized wall clock including transfers/result materialization, not ROS latency. Nine paired workloads, shared desktop GPU, no concurrent experiment jobs."
+  },
+  "planning": {
+    "per_scenario": 100,
+    "repeats": 3,
+    "seed": 261815951,
+    "planned_queries": 1000,
+    "planned_calls": 3000,
+    "scope": "Actual executePlannerJob static queries, independent dense geometry validation, measured-only new maps; repeats do not create additional independent queries."
+  },
+  "navigation": {
+    "seed": 261915951,
+    "per_scenario": 30,
+    "scenarios": ["straight", "turn", "reverse", "detour", "corridor", "ramp", "cross_slope", "waves", "steep_ramp", "step", "unknown", "emerge", "crossing", "stale_map"],
+    "planned_cases": 420,
+    "scope": "Production C++ planner/control callbacks, rolling time/current obstacle returns, first-order bicycle plant. Not PhysX, suspension/contact, SLAM/DDS concurrency or proof of dynamic-map ghost clearing."
+  },
+  "gates": {
+    "accepted_outside_hull": 0,
+    "accepted_hidden_rmse_m": 0.1,
+    "accepted_hidden_picp95_min": 0.9,
+    "unsafe_false_negative_rate_max": 0.01,
+    "risk_latency_p95_ms": 100,
+    "planner_latency_p95_ms": 500,
+    "interpretation": "Engineering screening criteria, not standards or physical certification; no post-result threshold selection. Empty accepted domain is not a success."
+  },
+  "statistics": {
+    "bootstrap_resamples": 4000,
+    "seed": 261715953,
+    "unit": "Generated geometry or public source group, not cells, headings, masks or timing repetitions. Road has 11 groups, indoor 49. Report pooled confusion denominators separately from equal-group estimates.",
+    "paired_noise": "Within-geometry difference in RMSE/CRPS/FNR against zero noise, cluster bootstrap of differences. Not an external-method comparison or significance claim for thousands of correlated poses.",
+    "precision": "Report cluster-bootstrap intervals and cumulative interval width vs group count as descriptive precision, not a post-hoc stopping rule. All prespecified samples retained."
+  },
+  "interpretation": "GP diagnostics enabled with defaults 384 train/96 inducing. Navigation uses measured-only surface, GP refinement and unknown completion off. Report this deployment boundary rather than attributing navigation to unused GP predictions. Retain old v3 arrays and source fingerprints."
+}

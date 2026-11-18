@@ -38,6 +38,8 @@ def main():
     parser.add_argument("--config", type=Path, default=ROOT / "src/FAST_LIO/config/isaac_hunter_mid360_pointcloud.yaml")
     parser.add_argument("--enable-map-expansion", action="store_true")
     parser.add_argument("--dynamic-clear-enabled", choices=("true", "false"), default=None)
+    parser.add_argument('--dynamic-filter-backend',choices=('none','dufomap','freedom'),default='none')
+    parser.add_argument('--dynamic-registration-filter',action='store_true')
     parser.add_argument("--timeout", type=float, default=10.0)
     args = parser.parse_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
@@ -48,6 +50,8 @@ def main():
     if args.dynamic_clear_enabled is not None:
         expected["mapping.dynamic_clear_enabled"] = args.dynamic_clear_enabled == "true"
     expected["use_sim_time"] = True
+    expected['mapping.dynamic_filter_backend']=args.dynamic_filter_backend
+    expected['mapping.dynamic_registration_filter_enabled']=args.dynamic_registration_filter
 
     import rclpy
     from rcl_interfaces.srv import GetParameters

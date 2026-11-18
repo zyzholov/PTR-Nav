@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 project(se2_grid_ros)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_compile_options(-Wall -Wextra -Wpedantic)
@@ -76,6 +80,13 @@ ament_export_dependencies(
   rosidl_runtime_cpp
   Eigen3
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_yaw_extent test/test_yaw_extent.cpp)
+  target_link_libraries(test_yaw_extent ${PROJECT_NAME})
+  ament_target_dependencies(test_yaw_extent se2_grid_core se2_grid_msgs)
+endif()
 
 ament_package()
 

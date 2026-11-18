@@ -12,6 +12,10 @@ fsgp_bgk_se2_node:
 
     # Preserve current-scan vertical geometry independently of terrain smoothing.
     subscribe_cloud: true
+    # FAST-LIO derived clouds are reliable; keep only the latest frame.
+    cloud_reliable: true
+    # Keep one wire frame; deserialize only the frame chosen for computation.
+    raw_map_ingress: true
 
     use_gpu: true
     # auto selects the fused CUDA kernels for the normal 104x104x36 map while
@@ -30,33 +34,76 @@ fsgp_bgk_se2_node:
     variance_free: 0.01
     variance_hard: 0.20
     slope_free_rad: 0.10
-    max_slope_rad: 0.55
+    max_slope_rad: 0.17453292519943295
     step_free_m: 0.04
-    max_step_m: 0.18
+    max_step_m: 0.10
+    # Local vertical jump is NOT the whole-body residual span. The latter is
+    # bounded by the 135mm ground clearance minus a 10mm geometric reserve.
+    probability_roughness_limit_m: 0.125
+    vehicle_ground_clearance_m: 0.135
+    underbody_clearance_margin_m: 0.010
 
     # Hunter SE footprint used by the SEB yaw sweep.
-    footprint_front: 0.42
-    footprint_back: 0.42
+    footprint_front: 0.420
+    footprint_back: 0.420
     footprint_half_width: 0.313
     # Keep the 0.84 x 0.626 m Hunter footprint directionally distinct on a
     # 0.20 m grid (7 longitudinal cells versus 5 lateral cells).
     footprint_margin: 0.10
+    # Datasheet chassis plus the actual steering tyre sweep, not 626mm at
+    # every steer. See config/vehicles/neos.json; axles still await measurement.
+    collision_body_front_m: 0.421
+    collision_body_back_m: 0.421
+    collision_body_half_width_m: 0.360
     footprint_samples_x: 5
     footprint_samples_y: 5
     pitch_free_rad: 0.08
     roll_free_rad: 0.08
-    max_pitch_rad: 0.55
-    max_roll_rad: 0.45
+    max_pitch_rad: 0.17453292519943295
+    max_roll_rad: 0.17453292519943295
     min_support_ratio: 0.55
 
     risk_fusion_mode: weighted
     baseline_weight: 0.45
+    # terrain_analyzer has already evaluated the oriented vehicle footprint.
+    baseline_is_pose_risk: true
     seb_weight: 0.45
     uncertainty_weight: 0.10
     unknown_risk: 0.65
+    # Do not dilute physical geometry with BGK/weighted fusion. The guard is
+    # a pre-limit safety margin in normalized geometry risk, not a probability.
+    use_observed_geometry: true
+    residual_step_scale: 1.0
+    geometry_guard_risk: 0.90
 
     include_diagnostic_layers: false
     publish_debug_clouds: false
     debug_yaw_index: 0
     debug_cloud_stride: 2
     log_period_sec: 2.0
+
+    # Experimental real GP posterior layers. Unknown risk remains conservative.
+    # Background prediction is visible separately; it does not grant passage.
+    prediction_backend: feature_sgp
+    gp_device: auto
+    gp_training_steps: 12
+    gp_query_chunk: 2048
+    gp_fit_period_s: 1.0
+    gp_async: true
+    gp_prediction_max_age_s: 2.0
+    gp_support_radius_m: 1.2
+    gp_accept_std_m: 0.10
+    gp_refine_observed: false
+    gp_complete_supported: false
+    gp_local_conditioning: true
+
+    # Distinct from the legacy heuristic risk layer. Gaussian height error
+    # model with unknown-correlation upper bounds; not empirical calibration.
+    publish_probability: true
+    probability_height_std_floor_m: 0.005
+    probability_variance_scale: 1.0
+    probability_use_gp_completion: false
+    probability_gp_max_age_s: 0.25
+    # Use more actual surrounding measurements for the quadratic trend.
+    # Distances, noise model, hull and probability gates remain unchanged.
+    probability_gp_neighbors: 64

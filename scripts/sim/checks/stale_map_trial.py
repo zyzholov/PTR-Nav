@@ -2,10 +2,11 @@
 """Verify that terrain_nav stops a moving vehicle after risk-map publication stalls."""
 
 import argparse
+import json
 import math
 import os
-import signal
 import time
+from pathlib import Path
 
 os.environ["RMW_IMPLEMENTATION"] = os.environ.get("HUNTER_ISAAC_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")
 
@@ -13,6 +14,7 @@ import rclpy
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from std_srvs.srv import SetBool
 
 
 def yaw_from_quaternion(q):
@@ -41,7 +43,15 @@ class Probe(Node):
         self.truth_speeds.append((time.monotonic(), math.hypot(velocity.x, velocity.y)))
 
 
-def run(node, terrain_pgid):
+def run(node, pause_service, output=None):
+    client=node.create_client(SetBool,pause_service)
+    if not client.wait_for_service(timeout_sec=5):raise RuntimeError("missing qualification map relay")
+    def pause(value):
+        request=SetBool.Request();request.data=value
+        future=client.call_async(request)
+        deadline=time.monotonic()+3
+        while not future.done() and time.monotonic()<deadline:rclpy.spin_once(node,timeout_sec=.05)
+        if not future.done() or not future.result().success:raise RuntimeError("map relay did not acknowledge fault state")
     deadline = time.monotonic() + 15.0
     while time.monotonic() < deadline:
         rclpy.spin_once(node, timeout_sec=0.1)
@@ -73,11 +83,12 @@ def run(node, terrain_pgid):
 
     stopped_at = time.monotonic()
     try:
-        os.killpg(terrain_pgid, signal.SIGSTOP)
+        pause(True)
         while time.monotonic() - stopped_at < 2.5:
             rclpy.spin_once(node, timeout_sec=0.1)
     finally:
-        os.killpg(terrain_pgid, signal.SIGCONT)
+        pause(False)
+    resumed_at = time.monotonic()
 
     after = [(t - stopped_at, v) for t, v in node.commands if t >= stopped_at]
     late = [abs(v) for dt, v in after if dt >= 1.5]
@@ -92,18 +103,49 @@ def run(node, terrain_pgid):
     if not late_truth or late_truth[-1] > 0.15:
         print("FAIL: vehicle was still moving after the stale-map stop", flush=True)
         return 1
-    print("PASS: stale risk map caused /cmd_vel to stop", flush=True)
+
+    resume_start = node.odom.pose.pose.position
+    resume_xy = (resume_start.x, resume_start.y)
+    resumed_commands = []
+    progress = 0.0
+    deadline = resumed_at + 12.0
+    while time.monotonic() < deadline:
+        rclpy.spin_once(node, timeout_sec=0.1)
+        resumed_commands = [(t, v) for t, v in node.commands if t >= resumed_at and abs(v) > 0.2]
+        p = node.odom.pose.pose.position
+        progress = math.hypot(p.x - resume_xy[0], p.y - resume_xy[1])
+        if len(resumed_commands) >= 5 and progress > 0.15:
+            break
+
+    recovered = len(resumed_commands) >= 5 and progress > 0.15
+    metrics = {
+        "fault_scope":"only risk-map delivery, sensors and CUDA processes remain running",
+        "passed": recovered,
+        "late_max_command_mps": max(late),
+        "late_truth_speed_mps": late_truth[-1],
+        "resume_first_motion_wall_s": resumed_commands[0][0] - resumed_at if resumed_commands else None,
+        "resume_progress_m": progress,
+        "pause_duration_wall_s": resumed_at - stopped_at,
+    }
+    if output:
+        Path(output).write_text(json.dumps(metrics, indent=2) + "\n")
+    print(json.dumps(metrics, indent=2), flush=True)
+    if not recovered:
+        print("FAIL: fresh risk map did not recover motion without a new goal", flush=True)
+        return 1
+    print("PASS: stale risk map stopped motion; fresh data replanned and recovered", flush=True)
     return 0
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--terrain-pgid", type=int, required=True)
+    parser.add_argument("--pause-service",default="/qualification/pause_map_relay")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     rclpy.init()
     node = Probe()
     try:
-        return run(node, args.terrain_pgid)
+        return run(node, args.pause_service, args.output)
     finally:
         node.destroy_node()
         rclpy.shutdown()

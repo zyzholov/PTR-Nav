@@ -15,6 +15,7 @@ setup(
         (f"share/{package_name}/rviz", glob("rviz/*.rviz")),
     ],
     install_requires=["setuptools", "numpy"],
+    extras_require={"prediction": ["torch", "gpytorch", "scipy"]},
     tests_require=["pytest"],
     zip_safe=True,
     maintainer="z",
@@ -24,6 +25,7 @@ setup(
     entry_points={
         "console_scripts": [
             "fsgp_bgk_se2_node = fsgp_bgk_se2.fsgp_bgk_se2_node:main",
+            "navigation_display = fsgp_bgk_se2.navigation_display_node:main",
         ],
     },
 )

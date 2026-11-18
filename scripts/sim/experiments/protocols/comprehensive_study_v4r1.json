@@ -1,0 +1,88 @@
+{
+  "study_id": "PTR-COMPREHENSIVE-04R1",
+  "date": "2026-10-15",
+  "seed": 261715951,
+  "scope": "Post-correction own-method study. Keep source diversity, paired robustness, discretization, runtime, native planning and kinematic closed loops separate. No external comparison or new PhysX result.",
+  "revision": {
+    "previous_protocol": "comprehensive_study_v4.json",
+    "reason": "Expanded roads exposed one query 1.5185 micrometers outside the measured hull, rounded by float32 to 0.0284 micrometers. Preserve the original float64 physical query for hull gating; GPU regression arithmetic is unchanged.",
+    "archive": "log/comprehensive_v4_20261015 retains 3055 completed conditions, failed check, frozen sources and old protocol. Do not merge these partial runs into R1 counts.",
+    "rerun": "All predeclared cases are rerun; reuse only immutable source geometries, masks and seeds, never select cases by outcome. No threshold relaxation."
+  },
+  "resolution_m": 0.2,
+  "yaw_bins": 36,
+  "noise_std_m": 0.02,
+  "risk_threshold": 0.58,
+  "nominal_levels": [0.5, 0.8, 0.9, 0.95, 0.99],
+  "distance_edges_m": [0, 0.2, 0.35, 0.7, 1.2, 100],
+  "public": {
+    "generated_per_family": 100,
+    "generated_seed": 261615951,
+    "road_inputs": 100,
+    "indoor_inputs": 100,
+    "conditions": ["point15", "point30", "point60", "hole08", "hole16", "hole32", "frontier25", "frontier50"],
+    "planned_cases": 4000,
+    "reference": "300 new generated geometries, 100 SuMa road submaps across 11 sequences, 100 reused indoor inputs across 49 layouts. Sparse public reference is a proxy; no score-based exclusion."
+  },
+  "mechanism": {
+    "families": ["flat", "slope_safe", "slope_boundary", "waves", "ridge", "step_low", "step_high", "column"],
+    "seeds_per_family": 50,
+    "size": 64,
+    "conditions": ["point30", "hole16", "frontier50"],
+    "noise_levels_m": [0, 0.02, 0.05],
+    "planned_cases": 3600,
+    "pairing": "Same geometry, deletion, standardized Z noise and reference within each noise triplet. GP noise model stays 0.02m; risk variance follows known injected noise. Flat trials form one geometry group."
+  },
+  "discretization": {
+    "families": ["slope_boundary", "ridge", "step_high", "column"],
+    "geometries_per_family": 20,
+    "resolution_m": [0.1, 0.2, 0.4],
+    "yaw_bins": [18, 36, 72],
+    "planned_cases": 720,
+    "reference_yaw_bins": 72,
+    "scope": "Dense analytic measurements to occupancy/BGK/SEB, no GP, zero injected noise. Same 121 physical centers and 72 headings for every setting; coarse layer selected by containing bin."
+  },
+  "scaling": {
+    "seed": 261715952,
+    "sizes": [48, 104, 160],
+    "yaw_bins": [18, 36, 72],
+    "backends": ["cpu", "cupy"],
+    "resolution_m": 0.2,
+    "warmup_calls": 8,
+    "measured_calls": 30,
+    "planned_measured_calls": 540,
+    "scope": "Synchronized BgkSebEstimator.compute wall clock with transfers and copies; nine workloads on shared desktop GPU, no concurrent experimental jobs. Not ROS latency."
+  },
+  "planning": {
+    "per_scenario": 100,
+    "repeats": 3,
+    "seed": 261815951,
+    "planned_queries": 1000,
+    "planned_calls": 3000,
+    "scope": "Actual executePlannerJob queries, dense independent geometry validation, new measured-only maps. Timing repeats are not extra independent queries."
+  },
+  "navigation": {
+    "seed": 261915951,
+    "per_scenario": 30,
+    "scenarios": ["straight", "turn", "reverse", "detour", "corridor", "ramp", "cross_slope", "waves", "steep_ramp", "step", "unknown", "emerge", "crossing", "stale_map"],
+    "planned_cases": 420,
+    "scope": "Production callbacks, current obstacles and first-order bicycle plant; not PhysX/contact, SLAM/DDS concurrency or dynamic-map ghost clearing."
+  },
+  "gates": {
+    "accepted_outside_hull": 0,
+    "accepted_hidden_rmse_m": 0.1,
+    "accepted_hidden_picp95_min": 0.9,
+    "unsafe_false_negative_rate_max": 0.01,
+    "risk_latency_p95_ms": 100,
+    "planner_latency_p95_ms": 500,
+    "interpretation": "Engineering screens, not standards or physical certification. No post-result threshold selection; empty acceptance is not success."
+  },
+  "statistics": {
+    "bootstrap_resamples": 4000,
+    "seed": 261715953,
+    "unit": "Geometry/source group, not cells, headings, masks or repeats. Roads have 11 groups, indoor 49. Pooled confusion counts are separate from equal-group estimates.",
+    "paired_noise": "Within-geometry difference against zero noise, cluster bootstrap. Not external-method comparison or significance over correlated poses.",
+    "precision": "Cumulative mean CI width is descriptive, not a post-hoc stopping rule; all prescribed samples retained."
+  },
+  "interpretation": "GP diagnostics use defaults 384 train/96 inducing. Navigation uses measured-only surface, refinement/completion off; no navigation gain attributed to unused GP output."
+}

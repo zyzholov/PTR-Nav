@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
     use_sim_time: true
+    cloud_reliable: true
     use_pcd_prior: false
     # Use FAST_LIO registered cloud in world frame and accumulate over time.
     cloud_is_local_map: false
@@ -43,11 +44,11 @@
     sdf_hard_obstacle_slope: 1.65
     sdf_obstacle_curvature: 1.00
     sdf_hard_obstacle_curvature: 1.80
-    step_height_soft: 0.22
-    step_height_hard: 0.50
-    traversable_slope_free: 0.55
+    step_height_soft: 0.07
+    step_height_hard: 0.10
+    traversable_slope_free: 0.08
     traversable_curvature_free: 0.45
-    traversable_step_free: 0.09
+    traversable_step_free: 0.04
     traversability_risk_gamma: 2.40
     risk_weight_slope: 0.22
     risk_weight_curvature: 0.33

@@ -69,6 +69,9 @@ namespace se2_grid
     void initGeometry(const Eigen::Array2d& length_pos_, const double resolution_pos_,
                       const double resolution_yaw_,
                       const Eigen::Vector2d& position_ = Eigen::Vector2d::Zero());
+    void initGeometry(const Eigen::Array2d& length_pos_, const double resolution_pos_,
+                      const double resolution_yaw_, const Eigen::Vector2d& position_,
+                      const double length_yaw_);
 
     void convertToDefaultStartIndex();
 
@@ -189,12 +192,13 @@ namespace se2_grid
 
     inline float& at(const std::string& layer, const Eigen::Array3i& index)
     {
-      return data.at(layer)[index(2)](index(0), index(1));
+      // Planar layers have one matrix even when the query carries a heading.
+      return data.at(layer).at(has_so2.at(layer) ? index(2) : 0)(index(0), index(1));
     }
 
     inline float at(const std::string& layer, const Eigen::Array3i& index) const
     {
-      return data.at(layer)[index(2)](index(0), index(1));
+      return data.at(layer).at(has_so2.at(layer) ? index(2) : 0)(index(0), index(1));
     }
 
     inline void clear(const std::string& layer)
@@ -345,7 +349,7 @@ namespace se2_grid
       double new_yaw = yaw;
       while (new_yaw < 0)
         new_yaw += PI_M2;
-      while (new_yaw > PI_M2)
+      while (new_yaw >= PI_M2)
         new_yaw -= PI_M2;
       return new_yaw;
     }

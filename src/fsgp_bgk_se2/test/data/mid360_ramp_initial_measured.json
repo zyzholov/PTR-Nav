@@ -1,0 +1,11 @@
+{
+  "source_run": "modular_smoke_20261027_173859",
+  "stamp_s": 30.614999314,
+  "scope": "observed map, measured registered scan and reconstructed initial-plane diagnostic; no simulator terrain truth; not stability acceptance",
+  "source_sha256": {
+    "map.cdr": "2eb76674e4c5e2802b3972e172e3de367d9a6c74554c7c82e91caa1fe842ba2b",
+    "odom.cdr": "cbed2fbe0b607d6bb4bbce0fea04b6f50831b0bef3481e18203e7ceedd74cf2b",
+    "completion_cloud.cdr": "c2a9feb2203aca2b8934c5d271fdf5933a24daedf78ced551da87277ef3187f0"
+  },
+  "fixture_sha256": "f762be17379cbb01999d7fe4859981470f722dd00c1d42fd24912f9f390285b8"
+}

@@ -2,13 +2,16 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$ROOT_DIR/scripts/lib/sim_navigation_profile.sh"
+hunter_sim_navigation_profile mapping "$@"
+set -- "${HUNTER_STAGE_ARGS[@]}"
 SRC_DIR="$ROOT_DIR/src"
 FASTLIO_SRC_DIR="$SRC_DIR/FAST_LIO"
 
 CONFIG_PATH="$FASTLIO_SRC_DIR/config"
 CONFIG_FILE="auto"
 RVIZ="true"
-LIDAR_WARN_MIN_POINTS="${HUNTER_FASTLIO_WARN_MIN_POINTS:-10000}"
+LIDAR_WARN_MIN_POINTS="${HUNTER_FASTLIO_WARN_MIN_POINTS:-1000}"
 EXTRA_ARGS=()
 
 for arg in "$@"; do
@@ -17,7 +20,13 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: scripts/sim/start_mapping.sh [rviz:=true|false] [config_file:=auto|FILE] [dynamic_clear_enabled:=true|false] [--show-args]
 Starts FAST-LIO only after receiving simulation clock, LiDAR and external IMU.
+  navigation_profile:=neos_joint_sim  Matching simulation model/filter preset.
 PointCloud2 and Livox CustomMsg select different configurations automatically.
+  dynamic_filter_backend:=dufomap  Opt-in official DUFOMap static-map auxiliary core.
+  dynamic_filter_backend:=freedom  Opt-in FreeDOM static-history classifier (experimental).
+                                  Raw current scans remain available to live collision checks.
+  dynamic_registration_filter:=true  Experimental FreeDOM preceding-label EKF association exclusion.
+                                     Requires dynamic_filter_backend:=freedom; raw scans remain intact.
 EOF
       exit 0
       ;;
@@ -175,7 +184,7 @@ if [[ "$lidar_msg_type" == "sensor_msgs/msg/PointCloud2" ]]; then
     if (( first_cloud_points < LIDAR_WARN_MIN_POINTS )); then
       echo "[hunter_fastlio] WARNING: /livox/lidar looks sparse for FAST-LIO mapping." >&2
       echo "  Current sample has ${first_cloud_points} points; warning threshold is ${LIDAR_WARN_MIN_POINTS}." >&2
-      echo "  Start Isaac with the default mapping profile or --lidar-quality mapping_dense for a denser 10Hz cloud." >&2
+      echo "  Check scene visibility, rate, range and mount geometry. Emitted rays are not valid returns; a tilted MID360 may have only several thousand ground hits per frame." >&2
     fi
   fi
 fi

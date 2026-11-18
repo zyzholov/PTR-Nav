@@ -129,4 +129,17 @@ install(
   FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_ground_fusion test/test_ground_fusion.cpp)
+  target_include_directories(test_ground_fusion PRIVATE include)
+  if(TARGET terrain_analyzer_gpu)
+    ament_add_gtest(test_ground_fusion_cuda test/test_ground_fusion_cuda.cu)
+    target_include_directories(test_ground_fusion_cuda PRIVATE include)
+    target_link_libraries(test_ground_fusion_cuda CUDA::cudart)
+    set_target_properties(test_ground_fusion_cuda PROPERTIES CUDA_STANDARD 14
+      CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
+  endif()
+endif()
+
 ament_package()

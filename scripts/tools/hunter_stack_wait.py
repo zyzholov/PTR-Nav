@@ -2,6 +2,7 @@
 """Wait for one usable ROS message from a Hunter stack stage."""
 
 import argparse
+import math
 import time
 
 import rclpy
@@ -70,6 +71,19 @@ def main():
             needed = args.layer or ("bgk_mean" if "fsgp_bgk" in args.topic else "risk")
             if needed not in msg.layers or not msg.data:
                 return
+            if needed == "failure_probability_upper":
+                if "probability_contract" not in msg.layers or "probability_valid" not in msg.layers:
+                    return
+                yaw_count=max(1,math.ceil(msg.info.length_yaw/max(msg.info.yaw_resolution,1e-9)-1e-6))
+                offset=0
+                for name,so2 in zip(msg.layers,msg.has_so2):
+                    count=yaw_count if so2 else 1
+                    if name==needed:
+                        if not any(math.isfinite(v) and 0<=v<=1
+                                   for array in msg.data[offset:offset+count] for v in array.data):
+                            return
+                        break
+                    offset+=count
             detail = f"layers={len(msg.layers)} required={needed}"
         else:
             detail = "sample received"

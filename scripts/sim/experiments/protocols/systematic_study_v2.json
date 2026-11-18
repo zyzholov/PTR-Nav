@@ -1,0 +1,705 @@
+{
+  "schema_version": 2,
+  "study_id": "PTR-SYS-02",
+  "date": "2026-10-15",
+  "title": "不完整观测下的航向相关地形风险与导航闭环实验",
+  "scope": "保留冻结批次，重新组织研究问题；280任务逐调用计时重分析；本次修订不新增算法实验",
+  "frozen_rules": [
+    "先按几何、房间布局或道路序列划分开发、验证和测试来源；反馈调参后的旧测试集仅作回归。",
+    "完整参考只进入评分分支；不得用于输入补全、模型拟合、诱导点选择或测试集调阈值。",
+    "固定门限0.58；图中的阈值扫描只作诊断，不在最终测试集选门限。",
+    "条件、航向、格子、CPU/GPU配对和同布局重复不是独立世界；失败与不可评价记录全部保留。",
+    "区分高程预测、有效观测、车辆姿态风险和点状碰撞；风险分数不是已校准的通过概率。",
+    "模型闭环、物理闭环及代码版本分别统计，不合并成功率；安全拒绝不算目标到达。",
+    "专项S2是配对工程回归，不作外部对比或最终机制消融；所有外部比较本轮仅设计。",
+    "普通示例固定首个预定可评价输入；失败剖面固定首个不合格记录并披露规则；不按最优表现挑图。",
+    "速度到达率是执行压力指标，不替代计算效率；不以截断坐标轴制造变化。",
+    "首次调用、后续调用/失败重试、控制回调与端到端时序分开；没有单调墙钟事件链不能补造延迟。"
+  ],
+  "evidence": {
+    "dataset": "log/optimization_navigation_20261013_v2/holdout_clouds/evaluation_manifest.json",
+    "terrain": "log/optimization_navigation_20261013_v2/holdout_final/results.json",
+    "terrain_audit": "docs/reports/terrain_control_expansion_20261013_v2/assets/audit.json",
+    "array_statistics": "docs/reports/thesis_evidence_20261014/assets/array_statistics.json",
+    "navigation_plan": "log/optimization_navigation_20261013_v2/navigation_holdout_h/cases.json",
+    "navigation": "log/optimization_navigation_20261013_v2/navigation_holdout_h/runs/results.json",
+    "physical": "log/optimization_navigation_20261013_v2/isaac_semantics_k/manifest.json",
+    "completion": "log/optimization_navigation_20261013_v2/completion_regression/results.json",
+    "completion_audit": "docs/reports/terrain_control_expansion_20261013_v2/assets/completion_audit.json",
+    "analytic": "log/thesis_evidence_20261014/analytic_yaw_frozen/results.json",
+    "dynamic_capture": "log/optimization_navigation_20261013_v2/isaac_capture_m/manifest.json",
+    "supplemental_protocol": "scripts/sim/experiments/protocols/supplemental_study_v1.json",
+    "new_terrain": "log/supplemental_study_20261014/terrain/results.json",
+    "new_scaling": "log/supplemental_study_20261014/scaling/results.json",
+    "new_navigation_plan": "log/supplemental_study_20261014/navigation/cases.json",
+    "new_navigation": "log/supplemental_study_20261014/navigation/runs/results.json",
+    "speed_protocol": "scripts/sim/experiments/protocols/speed_response_v1.json",
+    "speed_campaign": "log/supplemental_study_20261014/speed/manifest.json"
+  },
+  "experiments": [
+    {
+      "id": "M1",
+      "kind": "main",
+      "name": "隐藏地面预测与不确定性",
+      "question": "观测不完整时预测误差如何随缺测类型与尺度变化，预测区间是否可靠？",
+      "status": "recorded_v1_component_reanalysis_with_v2_road_height_reference_audit",
+      "factors": {
+        "family": [
+          "hilly",
+          "forest",
+          "ruin",
+          "road",
+          "indoor"
+        ],
+        "condition": [
+          "point15",
+          "point30",
+          "point60",
+          "hole08",
+          "hole16",
+          "hole32",
+          "frontier25",
+          "frontier50"
+        ]
+      },
+      "controls": {
+        "resolution_m": 0.2,
+        "map_side_cells": 104,
+        "input_z_noise_m": 0.02,
+        "inducing_points": 96,
+        "training_steps": 12
+      },
+      "truth": "输入未观测且完整参考有高程的格子；参考不参与模型；有标签地面输入限制需披露",
+      "statistical_unit": "丘陵/森林/废墟的几何；室内布局；道路序列",
+      "metrics": [
+        "hidden_RMSE_cm",
+        "hidden_MAE_cm",
+        "PICP",
+        "interval_width_cm",
+        "Gaussian_CRPS_cm"
+      ],
+      "planned_cases": 20000,
+      "judgement": "完整展示误差与长尾；覆盖和宽度联合解释；不得把有预测值视为已知安全地面",
+      "reference_warning": "稀疏道路v1参考有零权NaN传播；v2只重评已保存高程预测，完整姿态风险需新批次",
+      "new_controlled_batch": "PTR-SUP-01：864条件，96配置/85不同几何；与旧五类批次分开",
+      "figures": [
+        "M1_masks",
+        "M1_scoring_domains",
+        "M1_road_deletion",
+        "M1_difficulty",
+        "M1_distributions",
+        "M1_distance",
+        "M1_uncertainty",
+        "M1_surface_hilly",
+        "M1_surface_ruin",
+        "C1_quality",
+        "C1_noise",
+        "C1_sections",
+        "C1_uncertainty"
+      ]
+    },
+    {
+      "id": "M2",
+      "kind": "main",
+      "name": "航向相关通行风险与危险辨识",
+      "question": "同位置不同航向的足迹风险是否正确，是否用过度拒绝换取低漏判？",
+      "status": "recorded_component_reanalysis",
+      "factors": {
+        "source_and_conditions": "与M1配对的相同2500份输入和八缺测条件",
+        "yaw_bins": 36
+      },
+      "controls": {
+        "positions_per_source": 128,
+        "reference_footprint_samples": [
+          13,
+          11
+        ],
+        "prediction_threshold": 0.58,
+        "pitch_limit_rad": 0.55,
+        "roll_limit_rad": 0.45,
+        "step_limit_m": 0.18
+      },
+      "truth": "完整来源上的独立密集足迹拟合与立体占据代理，不用预测风险定义真值",
+      "statistical_unit": "来源组；姿态状态仅作组内评分分母",
+      "metrics": [
+        "risk_MAE",
+        "danger_false_negative",
+        "safe_false_positive",
+        "reference_eligibility"
+      ],
+      "planned_cases": 20000,
+      "judgement": "危险漏判和安全误拒同时报告；未知拒绝不能解释为预测准确；不是实车通过概率",
+      "new_controlled_batch": "PTR-SUP-01：密集解析足迹、精确台阶交叉与圆柱交叠，不与旧参考定义混算",
+      "figures": [
+        "M2_risk_safety",
+        "M2_pose_space",
+        "C1_risk_spatial"
+      ]
+    },
+    {
+      "id": "M3",
+      "kind": "main",
+      "name": "规划跟踪与系统闭环",
+      "question": "地图输入能否支持到达、停车、绕障、倒车及危险任务拒绝？",
+      "status": "recorded_model_H_and_physical_K_not_current_full_qualification",
+      "factors": {
+        "model_families": [
+          "straight",
+          "turn",
+          "reverse",
+          "detour",
+          "corridor",
+          "ramp",
+          "cross_slope",
+          "waves",
+          "steep_ramp",
+          "step",
+          "unknown",
+          "emerge",
+          "crossing",
+          "stale_map"
+        ],
+        "physical_families": [
+          "detour",
+          "ramp",
+          "step",
+          "emerge",
+          "crossing",
+          "clearance"
+        ]
+      },
+      "controls": {
+        "model_map_hz": 2,
+        "model_live_cloud_hz": 10,
+        "model_plant_hz": 50,
+        "model_repeats_per_family": 100,
+        "physical_repeats_per_family": 2
+      },
+      "truth": "模型独立矩形碰撞和密集足迹检查；物理层使用真值轨迹与实际门控，接触力与轮胎支撑尚缺",
+      "statistical_unit": "固定场景族内随机化任务；不是全部独立地图",
+      "metrics": [
+        "qualified_arrival",
+        "qualified_rejection",
+        "collision",
+        "terrain_violation",
+        "tracking_P95_m",
+        "path_length_m",
+        "goal_settling"
+      ],
+      "planned_model_cases": 1400,
+      "planned_physical_cases": 12,
+      "judgement": "普通到达和安全拒绝分开；所有失败保留；只有最新代码的独立物理复测才能支持部署结论",
+      "new_model_cases": 280,
+      "new_paired_speed_cases": 400,
+      "figures": [
+        "M3_qualification",
+        "M3_tracking",
+        "M3_examples",
+        "M3_failures",
+        "M3_physical",
+        "C3_navigation"
+      ],
+      "supplementary_speed_study": "仅附录；固定顺序配对的执行压力，不是计算效率"
+    },
+    {
+      "id": "M4",
+      "kind": "main",
+      "name": "组件效率与端到端时序",
+      "question": "计算是否及时，组件速度能否转化为新鲜地图和快速控制？",
+      "status": "recorded_scaling_and_call_level_timing_reanalysis_end_to_end_pending",
+      "factors": {
+        "components": [
+          "GP_fit",
+          "GP_predict",
+          "BGK_SEB",
+          "planner",
+          "controller"
+        ],
+        "backend_pair": [
+          "cpu",
+          "cupy"
+        ],
+        "complexity_axes": [
+          "raw_input_points",
+          "map_cells",
+          "yaw_bins",
+          "inducing_points",
+          "planning_problem_geometry"
+        ]
+      },
+      "controls": {
+        "backend_map_shape": [
+          48,
+          48,
+          36
+        ],
+        "paired_noise_inputs": 480
+      },
+      "truth": "同步墙钟与保存的消息地图年龄；前者不是ROS网络或RTX渲染实时性",
+      "statistical_unit": "调用或案例内P95；明确不同分母，不混作全局回调P95",
+      "metrics": [
+        "wall_P50_P95_P99_max_ms",
+        "case_planner_P95_ms",
+        "case_control_P95_ms",
+        "physical_map_age_P95_s"
+      ],
+      "judgement": "冷启动保留并标识；单模块加速比不推断整机速度；共享GPU和扩展规模仍需专门复测",
+      "new_scaling_measured_calls": 600,
+      "figures": [
+        "M4_component_timing",
+        "M4_physical_timing",
+        "C2_scaling",
+        "P1_phase_timing",
+        "P2_return_timing",
+        "P3_retry_effort",
+        "P4_workload_3d"
+      ],
+      "timing_audit": "new_navigation的280任务全部规划调用；原生floor分位审计，新后续分位采用线性插值；控制仅已有摘要"
+    },
+    {
+      "id": "S1",
+      "kind": "special",
+      "name": "方向性机理与CPU/GPU一致性",
+      "question": "解析坡面同一点换航向时，SEB是否保持正确方向性，两后端是否一致？",
+      "status": "recorded_analytic_component",
+      "factors": {
+        "slope_rad": [
+          0.1,
+          0.2,
+          0.35,
+          0.45,
+          0.5,
+          0.6
+        ],
+        "direction_rad": [
+          0,
+          0.37,
+          0.91,
+          1.43
+        ],
+        "noise_repeats": 20,
+        "backends": [
+          "cpu",
+          "cupy"
+        ]
+      },
+      "truth": "独立解析梯度在车辆坐标下的俯仰/横滚，不是估计器自身平面拟合",
+      "statistical_unit": "24种坡面、480个配对噪声输入、960次计算",
+      "metrics": [
+        "seb_error",
+        "fused_error",
+        "false_safe_count",
+        "false_hazard_count",
+        "CPU_GPU_delta"
+      ],
+      "judgement": "组件机理诊断，不能证明真实轮胎支撑或GP预测；一致不代表准确",
+      "figures": [
+        "S1_direction"
+      ]
+    },
+    {
+      "id": "S2",
+      "kind": "special",
+      "name": "有界补全的安全代价",
+      "question": "局部补全能否减少误拒而不增加漏判，改善是否局限于小洞？",
+      "status": "recorded_paired_engineering_regression_default_off",
+      "factors": {
+        "sources": 500,
+        "conditions": 8,
+        "paired_maps": [
+          "observed_only",
+          "supported_completion"
+        ]
+      },
+      "truth": "同输入、同GP拟合、同独立参考的成对风险评分；不覆盖实测",
+      "statistical_unit": "来源组内配对差值，不是额外500个新世界",
+      "metrics": [
+        "delta_false_safe_pp",
+        "delta_false_hazard_pp",
+        "completed_hidden_reference_coverage",
+        "filled_RMSE_cm"
+      ],
+      "judgement": "漏判增加即不能声明安全改进；外部比较与正式机制消融另行冻结执行",
+      "figures": [
+        "S2_completion"
+      ]
+    },
+    {
+      "id": "S3",
+      "kind": "special",
+      "name": "动态障碍分层持续清除",
+      "question": "物体离开后当前帧、累计点云、前端风险、增强风险和实时碰撞层是否同步持续清除？",
+      "status": "recorded_single_diagnostic_not_reliability_batch",
+      "factors": {
+        "current_runs": 1,
+        "planned_speeds_mps": [
+          0.2,
+          0.8,
+          1.5
+        ],
+        "planned_actor_counts": [
+          1,
+          3
+        ]
+      },
+      "truth": "物体离开预定探测区后的时间零点；点数仍是区域代理，应补可见性和静态保护",
+      "statistical_unit": "目前单案例；未来按布局/物体轨迹分组",
+      "metrics": [
+        "first_clear",
+        "sustained_clear_2s",
+        "reappearance",
+        "static_preservation",
+        "right_censoring"
+      ],
+      "judgement": "当前帧下降不替代累计图清除；尾部不足2秒标右截尾，不填无限或已通过",
+      "figures": [
+        "S3_dynamic"
+      ]
+    },
+    {
+      "id": "S4",
+      "kind": "special",
+      "name": "台阶、沟壑与多层结构边界",
+      "question": "2.5D高程与SE2风险在哪些接触/支撑边界失效？",
+      "status": "planned_requires_independent_wheel_body_truth",
+      "factors": {
+        "step_height_m": [
+          0.08,
+          0.16,
+          0.18,
+          0.22,
+          0.35
+        ],
+        "gap_width_m": [
+          0.1,
+          0.3,
+          0.6
+        ],
+        "heading_deg": [
+          0,
+          45,
+          90,
+          135
+        ],
+        "noise_m": [
+          0,
+          0.01,
+          0.02,
+          0.04
+        ]
+      },
+      "truth": "独立车轮支撑、底盘净空、车身碰撞与倾覆代理；先实现几何真值再执行",
+      "statistical_unit": "新边界几何及配对噪声输入；优先阈值附近分层而非盲目全组合",
+      "metrics": [
+        "physical_violation",
+        "safe_rejection",
+        "boundary_error",
+        "support_validity"
+      ],
+      "judgement": "无结果；不得以平面残差台阶或漂亮三维图代替负障碍/多层验证",
+      "figures": []
+    }
+  ],
+  "future_comparison": {
+    "status": "design_only_not_executed",
+    "terrain_candidates": [
+      "原始SGP",
+      "原始FSGP",
+      "原始FSGP-BGK",
+      "原始SEB地形评价"
+    ],
+    "planning_candidates": [
+      "原始SEB-Naver",
+      "明确实现的Hybrid-A*与固定跟踪器"
+    ],
+    "controls": [
+      "相同原始观测与独立参考",
+      "相同车辆和约束",
+      "相同开发/验证/测试划分",
+      "同硬件预算和超时",
+      "同等验证调参预算"
+    ],
+    "separate_mechanistic_ablation": [
+      "局部GP条件分支",
+      "航向足迹",
+      "不确定性/支撑门控",
+      "时序自由空间维护",
+      "实时碰撞层"
+    ],
+    "primary_outcomes": [
+      "危险漏判与安全误拒",
+      "隐藏高程与分布质量",
+      "到达/拒绝合格率与物理违规",
+      "跟踪质量与端到端延迟"
+    ]
+  },
+  "appendix_figures": [
+    "C4_speed_rates",
+    "C4_tracking_boxes"
+  ],
+  "redesign": {
+    "status": "design_only_except_recorded_call_reanalysis",
+    "evidence_not_changed": true,
+    "new_algorithm_runs": 0,
+    "hierarchy": [
+      "D1地面预测",
+      "D2航向危险识别",
+      "D3因果时序融合",
+      "D4组件复杂度和时序",
+      "D5规划质量和效率",
+      "D6闭环与端到端"
+    ],
+    "wall_trace_contract": {
+      "status": "planned_not_instrumented",
+      "ids": ["task_id", "request_id", "event_id", "input_map_seq", "path_seq", "consumed_path_seq", "clock_domain_id"],
+      "monotonic_ns": ["input_received", "risk_ready", "request", "job_start", "job_end", "valid_path_commit", "control_consumes_path", "command_publish", "control_callback_enter", "control_callback_exit"],
+      "outcomes": ["returned_success", "independent_path_validation", "search_exit_reason", "search_substage_ns", "queue_or_job_cancelled"],
+      "separate_fields": ["ros_simulation_time", "real_time_factor", "control_release_period", "hardware_load"],
+      "missing_rule": "缺失事件、路径版本不匹配或跨时钟未对齐时不可计算；不以零补齐，不由仿真时间代替墙钟"
+    },
+    "pilot_rule": "先冻结独立参考和计时契约，完成小批可用性检查与失败定位，再冻结新版本及未见布局开展资格批次；不为数量重复已知失败",
+    "studies": [
+      {
+        "id": "D1",
+        "status": "planned_not_executed",
+        "object": "未观测地面高程和法向",
+        "question": "缺测几何、尺度和噪声如何影响预测质量及不确定性",
+        "factors": {
+          "source_families": 5,
+          "input_configurations_per_family": 100,
+          "mask_conditions": 9,
+          "input_noise_m": [
+            0,
+            0.02,
+            0.04
+          ]
+        },
+        "planned_input_configurations": 500,
+        "planned_component_conditions": 13500,
+        "independent_group_rule": "生成几何与真实场地/布局分别计数；500输入不保证500独立来源。真实数据须先核定来源组及参考完整性，再冻结正式测试数量",
+        "controls": [
+          "来源按独立几何/场地分组切分；已有反馈测试集只作回归",
+          "完整参考只评分",
+          "输入标签前端与无标签原始扫描分层报告"
+        ],
+        "primary": [
+          "hidden_RMSE",
+          "hidden_MAE",
+          "normal_error",
+          "danger_boundary_tail"
+        ],
+        "secondary": [
+          "PICP_vs_nominal",
+          "interval_width",
+          "CRPS",
+          "reference_eligibility"
+        ],
+        "figures": [
+          "误差分布箱线图",
+          "强度响应曲线",
+          "误差/覆盖/宽度联合图",
+          "同坐标三维观测/预测/参考/误差"
+        ],
+        "unit": "独立几何或实景来源组；13500条件不是13500地图，500输入也不保证500场地"
+      },
+      {
+        "id": "D2",
+        "status": "planned_requires_support_reference",
+        "object": "位置与航向的危险识别",
+        "question": "能否保留方向性并识别细柱、台阶及负障碍，是否过度拒绝",
+        "factors": {
+          "headings_deg": [
+            0,
+            30,
+            60,
+            90,
+            120,
+            150
+          ],
+          "geometry": [
+            "坡面",
+            "窄脊",
+            "台阶",
+            "细柱",
+            "沟壑",
+            "多层"
+          ]
+        },
+        "controls": [
+          "与D1共享输入配对",
+          "固定车辆尺寸与门限",
+          "独立密集几何与轮胎支撑/净空参考分开"
+        ],
+        "primary": [
+          "FNR",
+          "FPR",
+          "reference_eligibility"
+        ],
+        "secondary": [
+          "heading_boundary_error",
+          "risk_score_error"
+        ],
+        "figures": [
+          "航向风险极坐标/曲线",
+          "足迹及危险漏判空间图",
+          "漏判与误拒的分层箱线图"
+        ],
+        "unit": "几何组；位置和航向不是独立场景"
+      },
+      {
+        "id": "D3",
+        "status": "planned_requires_explicit_temporal_fusion_contract",
+        "object": "因果时序地形融合与动态清除",
+        "implementation_gate": "当前BGK后端为逐输入空间邻域平滑，GP缓存不等于历史后验融合；前端滚动累积/清除与后端时序机制须分开定义后才开始归因实验",
+        "question": "历史观测是否改善连续帧预测而不遗留动态占据或抹除静态结构",
+        "factors": {
+          "independent_sequences": 30,
+          "frames_per_sequence": 50,
+          "controls": [
+            "相同有序输入",
+            "仅使用当前及历史帧",
+            "分离静态结构和可见自由空间"
+          ]
+        },
+        "primary": [
+          "time_resolved_error",
+          "time_resolved_FNR_FPR",
+          "sustained_dynamic_clearance",
+          "static_preservation"
+        ],
+        "figures": [
+          "对齐时序误差曲线和来源区间",
+          "多层持续清除曲线"
+        ],
+        "unit": "30条独立序列；1500帧不是1500独立世界"
+      },
+      {
+        "id": "D4",
+        "status": "planned_extension_existing_600_BGK_SEB_calls_available",
+        "object": "组件计算负载与耗时",
+        "question": "输入规模改变时，地形计算各阶段耗时和尾部如何增长",
+        "factors": {
+          "input_points": [
+            10000,
+            30000,
+            100000
+          ],
+          "map_side": [
+            48,
+            104,
+            160
+          ],
+          "yaw_bins": [
+            18,
+            36,
+            72
+          ],
+          "inducing_points": [
+            48,
+            96,
+            192
+          ],
+          "backends": [
+            "cpu",
+            "cupy"
+          ]
+        },
+        "controls": [
+          "先单因素，再预定少量交互负载，不盲目全笛卡尔积",
+          "固定输入和准确度配置",
+          "首调用/暖机/正式分开",
+          "GPU同步，声明主机拷贝范围",
+          "随机或交错后端/负载顺序，记录共享负载、功耗、显存"
+        ],
+        "primary": [
+          "stage_wall_P50_P95_P99_max",
+          "memory_peak",
+          "output_accuracy_parity"
+        ],
+        "figures": [
+          "二维规模响应曲线",
+          "分阶段耗时箱线图",
+          "规模×航向×组件耗时三维柱图，仅补充"
+        ],
+        "unit": "每负载50次正式调用，按执行轮次分块；不是新增地形数量"
+      },
+      {
+        "id": "D5",
+        "status": "planned_new_queries_existing_280_task_8489_call_audit_available",
+        "object": "规划与重规划",
+        "question": "在相同地图/车辆约束下，计算多快、路径是否有效、失败是否重试失控",
+        "factors": {
+          "terrain_families": 5,
+          "independent_layouts_per_family": 20,
+          "start_goal_pairs_per_layout": 10,
+          "event_types": [
+            "静态首次规划",
+            "新障碍重规划"
+          ]
+        },
+        "planned_initial_queries": 1000,
+        "controls": [
+          "固定期望速度与跟踪器；速度不是主要计算复杂度轴",
+          "固定CPU预算、车辆、相同地图与起终点",
+          "可行性由独立参考判定，不能以本方法失败定义无解",
+          "失败/预算超时完整保留",
+          "按布局分组；问题重复只估计计时噪声"
+        ],
+        "primary": [
+          "first_call_wall",
+          "request_to_first_valid_committed_path_wall",
+          "replan_queue_and_compute_wall",
+          "valid_path_return_rate",
+          "failed_call_rate",
+          "calls_and_effort_per_task"
+        ],
+        "secondary": [
+          "path_length",
+          "curvature",
+          "direction_switches",
+          "trajectory_duration"
+        ],
+        "figures": [
+          "首次/重规划分阶段箱线图",
+          "失败与成功调用的任务等权CDF",
+          "耗时与路径质量散点",
+          "预算超限率曲线"
+        ],
+        "unit": "100个布局内1000起终点查询；重复调用不增加地图数"
+      },
+      {
+        "id": "D6",
+        "status": "planned_requires_wall_clock_instrumentation_and_physical_pilot",
+        "object": "闭环控制与端到端",
+        "question": "地图和规划是否及时被控制消费，并形成安全运动",
+        "pilot_tasks": 30,
+        "pilot_scope": "六类任务各五个独立布局；仅门控验证，不作为可靠性资格",
+        "controls": [
+          "先模型、再PhysX、再实车，三种统计分开",
+          "记录接触、地形姿态、实际速度与路径消费版本",
+          "相同单调墙钟事件链与任务ID",
+          "同时保存仿真时间与实时因子"
+        ],
+        "primary": [
+          "qualified_arrival_and_rejection",
+          "collision_and_terrain_violation",
+          "tracking_error",
+          "map_age",
+          "request_to_path_and_command_wall",
+          "control_period_jitter",
+          "sustained_clearance"
+        ],
+        "secondary": [
+          "speed_stress"
+        ],
+        "figures": [
+          "闭环轨迹/姿态时序",
+          "端到端时序分解",
+          "跟踪误差箱线图",
+          "速度压力二维曲线仅附录"
+        ],
+        "unit": "独立布局与任务；离线回调耗时不代表并发截止期"
+      }
+    ]
+  }
+}

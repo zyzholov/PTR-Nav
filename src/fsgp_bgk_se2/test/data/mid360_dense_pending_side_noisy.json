@@ -1,0 +1,17 @@
+{
+  "scope": "11x11 crop of actual trajectory-certificate revocation event; measured labels only, no simulator terrain truth",
+  "source_map_sha256": "31c6172926210c238c49fd5592e4fea90e043591a4bc06923856d25ac3303ee5",
+  "source_cell": [
+    54,
+    63
+  ],
+  "crop_rows": [
+    49,
+    60
+  ],
+  "crop_cols": [
+    58,
+    69
+  ],
+  "npz_sha256": "21ce4261f46115b40ce5799afa119409d4658fdb0101aab59cd6b61af3468ecf"
+}

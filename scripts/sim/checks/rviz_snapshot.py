@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Capture the configured RViz window without touching unrelated desktop windows."""
+"""Briefly activate the configured RViz window and capture its visible contents."""
 
 import argparse
+from contextlib import contextmanager
+import ctypes
+import ctypes.util
 import json
 import re
 import struct
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +33,109 @@ def find_window(title_part):
     if not candidates:
         raise RuntimeError(f"window containing {title_part!r} was not found")
     return max(candidates, key=lambda item: item[0])[1], tree
+
+
+def render_viewport_width(tree):
+    """Only inspect the selected window's subtree, never another RViz instance."""
+    widths = []
+    for line in tree.splitlines():
+        child = WINDOW_RE.match(line)
+        if child and ("Ogre" in child.group(2) or child.group(2) == "rviz2"):
+            width, height = int(child.group(3)), int(child.group(4))
+            if width >= 300 and height >= 300:
+                widths.append(width)
+    return max(widths, default=None)
+
+
+class _ClientMessage(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_int), ("serial", ctypes.c_ulong),
+                ("send_event", ctypes.c_int), ("display", ctypes.c_void_p),
+                ("window", ctypes.c_ulong), ("message_type", ctypes.c_ulong),
+                ("format", ctypes.c_int), ("data", ctypes.c_long * 5)]
+
+
+class _XEvent(ctypes.Union):
+    _fields_ = [("client", _ClientMessage), ("pad", ctypes.c_long * 24)]
+
+
+class XDesktop:
+    """Use the window manager activation protocol; no extra desktop packages."""
+
+    def __init__(self):
+        self.x = ctypes.CDLL(ctypes.util.find_library("X11"))
+        signatures = {
+            "XOpenDisplay": ([ctypes.c_char_p], ctypes.c_void_p),
+            "XDefaultRootWindow": ([ctypes.c_void_p], ctypes.c_ulong),
+            "XInternAtom": ([ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int], ctypes.c_ulong),
+            "XGetWindowProperty": ([ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+                ctypes.c_long, ctypes.c_long, ctypes.c_int, ctypes.c_ulong,
+                ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_ulong),
+                ctypes.POINTER(ctypes.c_void_p)], ctypes.c_int),
+            "XSendEvent": ([ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int,
+                ctypes.c_long, ctypes.POINTER(_XEvent)], ctypes.c_int),
+            "XFree": ([ctypes.c_void_p], ctypes.c_int),
+            "XFlush": ([ctypes.c_void_p], ctypes.c_int),
+            "XCloseDisplay": ([ctypes.c_void_p], ctypes.c_int),
+        }
+        for name, (arguments, result) in signatures.items():
+            function = getattr(self.x, name)
+            function.argtypes, function.restype = arguments, result
+        self.display = self.x.XOpenDisplay(None)
+        if not self.display:
+            raise RuntimeError("cannot connect to X11 display")
+        self.root = self.x.XDefaultRootWindow(self.display)
+        self.active_atom = self.x.XInternAtom(self.display, b"_NET_ACTIVE_WINDOW", False)
+
+    def active(self):
+        actual_type, count, remaining = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.c_ulong()
+        actual_format, data = ctypes.c_int(), ctypes.c_void_p()
+        status = self.x.XGetWindowProperty(self.display, self.root, self.active_atom,
+            0, 1, False, 33, ctypes.byref(actual_type), ctypes.byref(actual_format),
+            ctypes.byref(count), ctypes.byref(remaining), ctypes.byref(data))
+        try:
+            if status or actual_type.value != 33 or actual_format.value != 32 or not count.value or not data.value:
+                return 0
+            return ctypes.cast(data, ctypes.POINTER(ctypes.c_ulong))[0]
+        finally:
+            if data.value:
+                self.x.XFree(data)
+
+    def activate(self, window):
+        event = _XEvent()
+        event.client.type, event.client.send_event = 33, True
+        event.client.display, event.client.window = self.display, window
+        event.client.message_type, event.client.format = self.active_atom, 32
+        event.client.data[0] = 2  # Pager-style explicit activation request.
+        event.client.data[2] = self.active()
+        if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), ctypes.byref(event)):
+            raise RuntimeError("window manager rejected activation request")
+        self.x.XFlush(self.display)
+
+    def close(self):
+        self.x.XCloseDisplay(self.display)
+
+
+@contextmanager
+def visible_capture(desktop, window, timeout=3.0, redraw=.5):
+    previous = desktop.active()
+    try:
+        desktop.activate(window)
+        deadline = time.monotonic() + timeout
+        while desktop.active() != window:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("RViz did not become the active window; refusing an occluded capture")
+            time.sleep(.05)
+        time.sleep(redraw)
+        if desktop.active() != window:
+            raise RuntimeError("active window changed before RViz capture")
+        yield
+        if desktop.active() != window:
+            raise RuntimeError("active window changed during RViz capture")
+    finally:
+        # Do not steal focus back if the user switched to a different window.
+        if previous and previous != window and desktop.active() == window:
+            desktop.activate(previous)
 
 
 def read_xwd(path):
@@ -85,30 +192,29 @@ def main():
     parser.add_argument("--title", default="hunter_terrain_navigation.rviz")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    match, tree = find_window(args.title)
+    match, _tree = find_window(args.title)
     window_id = match.group(1)
     width, height = int(match.group(3)), int(match.group(4))
-    viewport_width = None
-    for line in tree.splitlines():
-        if window_id not in line and "Ogre" not in line and '"rviz2"' not in line:
-            continue
-        child = WINDOW_RE.match(line)
-        if child and child.group(1) != window_id:
-            child_width = int(child.group(3))
-            child_height = int(child.group(4))
-            if child_width >= 300 and child_height >= 300:
-                viewport_width = max(viewport_width or 0, child_width)
+    subtree = subprocess.check_output(["xwininfo", "-id", window_id, "-tree"], text=True)
+    viewport_width = render_viewport_width(subtree)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(suffix=".xwd") as capture:
-        subprocess.run(["xwd", "-silent", "-id", window_id, "-out", capture.name], check=True)
-        image = read_xwd(Path(capture.name))
+    desktop = XDesktop()
+    try:
+        with visible_capture(desktop, int(window_id, 16)):
+            with tempfile.NamedTemporaryFile(suffix=".xwd") as capture:
+                subprocess.run(["xwd", "-silent", "-id", window_id, "-out", capture.name], check=True)
+                image = read_xwd(Path(capture.name))
+    finally:
+        desktop.close()
     image.save(args.output)
     array = np.asarray(image, dtype=np.uint8)
     # A real frame should contain more than one almost-uniform panel colour.
     spread = float(array.reshape(-1, 3).std(axis=0).mean())
     report = {
         "window_id": window_id,
+        "window_title": match.group(2),
+        "active_window_verified": True,
         "window_size": [width, height],
         "viewport_width": viewport_width,
         "rgb_stddev": round(spread, 2),

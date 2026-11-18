@@ -25,11 +25,19 @@ namespace se2_grid
     void SE2Grid::initGeometry(const Eigen::Array2d& length_pos_, const double resolution_pos_,
                                 const double resolution_yaw_, const Eigen::Vector2d& position_)
     {
+      initGeometry(length_pos_, resolution_pos_, resolution_yaw_, position_, length_yaw);
+    }
+
+    void SE2Grid::initGeometry(const Eigen::Array2d& length_pos_, const double resolution_pos_,
+                                const double resolution_yaw_, const Eigen::Vector2d& position_,
+                                const double length_yaw_)
+    {
+      length_yaw = length_yaw_;
       resolution_pos_inv = 1.0 / resolution_pos_;
       resolution_yaw_inv = 1.0 / resolution_yaw_;
       size_pos(0) = static_cast<int>(ceil(length_pos_(0) / resolution_pos_));
       size_pos(1) = static_cast<int>(ceil(length_pos_(1) / resolution_pos_));
-      size_yaw = static_cast<int>(ceil(length_yaw / resolution_yaw_));
+      size_yaw = static_cast<int>(ceil(length_yaw / resolution_yaw_ - 1e-9));
 
       for (size_t i=0; i<layers.size(); i++)
       {

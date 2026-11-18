@@ -1,0 +1,14 @@
+{
+  "study_id": "PTR-JOINT-INTEGRATION-01",
+  "source_study": "PTR-COMPREHENSIVE-04R1",
+  "selection": "20 source-round-robin inputs per family, IDs sorted within each source. Determined without performance scores.",
+  "inputs_per_family": 20,
+  "conditions": ["point60", "hole08", "hole16"],
+  "modes": ["measured_only", "refine_observed", "bounded_completion"],
+  "planned_fits": 300,
+  "planned_risk_calls": 900,
+  "max_std_m": 0.04,
+  "max_distance_m": 0.35,
+  "risk_threshold": 0.58,
+  "scope": "Engineering integration pairing, not external method comparison or new algorithm. Same measured input/reference and shared GP fit for all modes; never use hidden reference to fit. Retain per-case newly missed hazards without cancellation. No planning performance claim or deployment default change."
+}

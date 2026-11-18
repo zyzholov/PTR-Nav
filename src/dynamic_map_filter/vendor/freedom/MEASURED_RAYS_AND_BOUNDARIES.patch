@@ -1,0 +1,158 @@
+--- a/include/freedom/raycast.h
++++ b/include/freedom/raycast.h
+@@ -2,6 +2,8 @@
+ #define _RAYCAST_H
+ 
+ #include "freedom/common_types.h"
++#include <algorithm>
++#include <cmath>
+ 
+ namespace freedom{
+ const double MAX_TIME = 1.0;
+@@ -36,12 +38,16 @@
+     Index& idx;
+     double res;
+ 
+-    inline double tToNextBound(const double& pos,const double& vel,const double& t_step)
++    inline double tToNextBound(const double& pos,const double& vel)
+     {
+         if(vel == 0) return MAX_TIME;
+-        double offset = -fmod(pos,res)/vel;
+-        return offset < 0 ? offset + t_step : offset; 
++        // floor defines the SAME half-open voxel as Map. At an exact
++        // boundary, a positive ray crosses the NEXT upper face, whereas a
++        // negative ray leaves this address cell immediately. fmod returned
++        // zero for both and shifted positive rays by an entire voxel.
++        const double boundary=(std::floor(pos/res)+(vel>0?1.:0.))*res;
++        return std::max(0.,(boundary-pos)/vel);
+     }
+ };
+ }
+-#endif+#endif
+--- a/src/raycast.cpp
++++ b/src/raycast.cpp
+@@ -1,4 +1,5 @@
+ #include "freedom/raycast.h"
++#include <limits>
+ 
+ namespace freedom{
+ void RayCaster::setRayEnd(const Point& end_, const Index& end_idx_)
+@@ -18,9 +19,14 @@
+     t_step_y = velocity.y() != 0 ? res / abs(velocity.y()) : MAX_TIME;
+     t_step_z = velocity.z() != 0 ? res / abs(velocity.z()) : MAX_TIME;
+ 
+-    t_to_next_bound_x = tToNextBound(start.x(),velocity.x(),t_step_x);
+-    t_to_next_bound_y = tToNextBound(start.y(),velocity.y(),t_step_y);
+-    t_to_next_bound_z = tToNextBound(start.z(),velocity.z(),t_step_z);
++    t_to_next_bound_x = tToNextBound(start.x(),velocity.x());
++    t_to_next_bound_y = tToNextBound(start.y(),velocity.y());
++    t_to_next_bound_z = tToNextBound(start.z(),velocity.z());
++    // A negative ray on a starting face immediately enters the lower
++    // address cell. Do not report zero-length start/corner cells as free.
++    if(t_to_next_bound_x==0. && step_x<0){idx.x()+=step_x;t_to_next_bound_x+=t_step_x;}
++    if(t_to_next_bound_y==0. && step_y<0){idx.y()+=step_y;t_to_next_bound_y+=t_step_y;}
++    if(t_to_next_bound_z==0. && step_z<0){idx.z()+=step_z;t_to_next_bound_z+=t_step_z;}
+ }
+ 
+ // 使用do{}while(step())的方式以从开始的体素遍历
+@@ -28,70 +34,15 @@
+ // 将结束判断放在开头以包括末端体素
+ bool RayCaster::step()
+ {   
+-    // 结束判断放在末尾，遍历时不包括末端体素
+-    if(t_to_next_bound_x < t_to_next_bound_y && t_to_next_bound_x < t_to_next_bound_z)
+-    {
+-        idx.x() += step_x;
+-        t_to_next_bound_x += t_step_x;
+-    }
+-    else if(t_to_next_bound_y < t_to_next_bound_z)
+-    {
+-        idx.y() += step_y;
+-        t_to_next_bound_y += t_step_y;
+-    }
+-    else
+-    {
+-        idx.z() += step_z;
+-        t_to_next_bound_z += t_step_z;
+-    }
+-
+-    return (t_to_next_bound_x < MAX_TIME || t_to_next_bound_y < MAX_TIME || t_to_next_bound_z < MAX_TIME);
+-
+-
+-    // // 结束判断放在开头，遍历时包括末端体素
+-    // if(t_to_next_bound_x >= MAX_TIME && t_to_next_bound_y >= MAX_TIME && t_to_next_bound_z >= MAX_TIME)
+-    // {
+-    //     // std::cout << "return false" << std::endl;
+-    //     return false;
+-    // }
+-
+-    // if(t_to_next_bound_x < t_to_next_bound_y && t_to_next_bound_x < t_to_next_bound_z)
+-    // {
+-    //     idx.x() += step_x;
+-    //     t_to_next_bound_x += t_step_x;
+-
+-    //     // std::cout << "t_to_next_bound_x" << t_to_next_bound_x << std::endl;
+-    // }
+-    // else if(t_to_next_bound_y < t_to_next_bound_z)
+-    // {
+-    //     idx.y() += step_y;
+-    //     t_to_next_bound_y += t_step_y;
+-
+-    //     // std::cout << "t_to_next_bound_y" << t_to_next_bound_y << std::endl;
+-    // }
+-    // else
+-    // {
+-    //     idx.z() += step_z;
+-    //     t_to_next_bound_z += t_step_z;
+-
+-    //     // std::cout << "t_to_next_bound_z" << t_to_next_bound_z << std::endl;
+-    // }
+-
+-    // // std::cout << "return true" << std::endl;
+-    // return true;
++    const double crossing=std::min({t_to_next_bound_x,t_to_next_bound_y,t_to_next_bound_z});
++    if(crossing>=MAX_TIME)return false;
++    // Cross simultaneous faces together. The few-ULP tie tolerance only
++    // OMITs numerical sliver cells; it cannot add a fictitious free cell.
++    const double tie=8*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(crossing));
++    if(t_to_next_bound_x<=crossing+tie){idx.x()+=step_x;t_to_next_bound_x+=t_step_x;}
++    if(t_to_next_bound_y<=crossing+tie){idx.y()+=step_y;t_to_next_bound_y+=t_step_y;}
++    if(t_to_next_bound_z<=crossing+tie){idx.z()+=step_z;t_to_next_bound_z+=t_step_z;}
++    return idx!=end_idx;
+ }
+ 
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-}+}  // namespace freedom
+--- a/src/mrmap.cpp
++++ b/src/mrmap.cpp
+@@ -304,12 +304,15 @@
+             const ScanMap::ScanBlock* scan_block_ptr;
+             while(scan_block_getter.get_ptr(scan_block_ptr))
+             {
+-                // 遍历每个scan voxel
++                // Trace original deskewed endpoints, not the voxel centroid.
++                // A centroid is not a measured beam: it both misses real
++                // free rays and can pass through cells no beam traversed.
+                 const ScanMap::ScanBlock& scan_block = *scan_block_ptr;
+-                for(const ScanMap::ScanVoxel& scan_voxel : scan_block.scan_voxels)
++                const auto& measured=scan.get_local_blocks()[scan_block.local_block_linear_idx].points;
++                for(const Point& endpoint : measured)
+                 {
+                     // 判断是否在raycast 范围内
+-                    Point raycast_end = closestPointInRaycastRange(scan_voxel.center);
++                    Point raycast_end = closestPointInRaycastRange(endpoint);
+                     Index raycast_end_voxel_idx;
+                     getVoxelIdxFromPoint(raycast_end,raycast_end_voxel_idx);
+ 

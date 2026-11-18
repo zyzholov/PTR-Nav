@@ -5,6 +5,7 @@ log/
 .colcon/
 
 # Runtime data and recordings
+data/public_clouds/
 bags/
 rosbag2_*/
 *.bag
@@ -23,6 +24,7 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
+.venv-experiments/
 venv/
 env/
 src/.venv/

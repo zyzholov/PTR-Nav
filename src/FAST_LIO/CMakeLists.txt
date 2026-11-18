@@ -60,6 +60,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(livox_ros_driver2 REQUIRED)
+find_package(dynamic_map_filter REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 set(dependencies
@@ -99,6 +100,7 @@ target_include_directories(fastlio_mapping PUBLIC
   ${PCL_INCLUDE_DIRS}
 )
 target_link_libraries(fastlio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} Eigen3::Eigen)
+target_link_libraries(fastlio_mapping dynamic_map_filter::ptr_dynamic_map dynamic_map_filter::ptr_freedom)
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
 list(APPEND EOL_LIST "foxy" "galactic" "eloquent" "dashing" "crystal")
@@ -124,5 +126,19 @@ install(
   DIRECTORY config launch rviz
   DESTINATION share/${PROJECT_NAME}
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_test REQUIRED)
+  add_executable(test_dynamic_voxel_ray test/dynamic_voxel_ray_test.cpp)
+  target_include_directories(test_dynamic_voxel_ray PRIVATE include)
+  target_compile_options(test_dynamic_voxel_ray PRIVATE -UNDEBUG)
+  ament_add_test(dynamic_voxel_ray COMMAND $<TARGET_FILE:test_dynamic_voxel_ray> TIMEOUT 60
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO)
+  add_executable(test_imu_initialization test/imu_initialization_test.cpp)
+  target_include_directories(test_imu_initialization PRIVATE include ${EIGEN3_INCLUDE_DIR})
+  target_compile_options(test_imu_initialization PRIVATE -UNDEBUG)
+  ament_add_test(imu_initialization COMMAND $<TARGET_FILE:test_imu_initialization> TIMEOUT 60
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO)
+endif()
 
 ament_package()

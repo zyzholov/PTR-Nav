@@ -48,8 +48,11 @@ target_link_libraries(se2_grid_to_pointcloud_node
   Eigen3::Eigen
 )
 
+add_executable(lidar_display_node src/lidar_display_node.cpp)
+ament_target_dependencies(lidar_display_node rclcpp nav_msgs sensor_msgs)
+
 # Install executable
-install(TARGETS se2_grid_to_pointcloud_node
+install(TARGETS se2_grid_to_pointcloud_node lidar_display_node
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY include/

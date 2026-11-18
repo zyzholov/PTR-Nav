@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "status": "proposed_research_protocol_not_degree_standard",
+  "scope": "Only our method has been measured. Comparisons and ablations below are planned, not executed.",
+  "rules": [
+    "Split by geometry/layout/sequence before development; new holdout after any feedback-based optimization.",
+    "Record planned cases, exclusions, source/configuration/binary hashes and random seeds before execution.",
+    "Keep all failures; separate arrivals from expected safe rejection and from flow qualification.",
+    "Do not count points, headings, masks, repeated room scans or CPU/GPU pairs as independent worlds.",
+    "Risk is an engineering score, not a calibrated event probability; height intervals and binary hazard detection are separate targets.",
+    "No external method run or GitHub push is authorized by this protocol alone.",
+    "Acceptance targets require supervisor/research approval; they must not be selected from favorable test results."
+  ],
+  "phases": [
+    {
+      "id": "G01", "target": "Directional geometry and backend consistency",
+      "status": "completed_current_component_only", "geometries": 24,
+      "noise_seeds_per_geometry": 20, "backends": ["cpu", "cupy"], "calculations": 960,
+      "result": "log/thesis_evidence_20261014/analytic_yaw_frozen/results.json",
+      "limitations": ["fully observed planar ground", "no GP prediction", "no PhysX traversability"]
+    },
+    {
+      "id": "G02", "target": "Steps, gaps, cliffs, roof/overhang and vertical structures",
+      "status": "planned_requires_new_truth_scene_generator",
+      "factors": {"step_height_m": [0.08, 0.16, 0.18, 0.22, 0.35],
+        "gap_width_m": [0.1, 0.3, 0.6], "slope_deg": [0, 10, 20, 30, 40],
+        "orientation_deg": [0, 45, 90, 135], "z_noise_std_m": [0, 0.01, 0.02, 0.04]},
+      "design": "stratified boundary-focused subset; define finite combinations before running, not blind full Cartesian multiplication",
+      "truth": "independent dense 3D wheel/body clearance and support, not model risk",
+      "must_record": ["physical violation rate", "safe rejection rate", "boundary precision", "risk vs heading", "invalid reference count"]
+    },
+    {
+      "id": "P01", "target": "Unknown terrain prediction without privileged ground labels",
+      "status": "planned_requires_raw_scan_frontend_and_gravity_aligned_reference",
+      "source_split": "new generated geometries plus held-out real off-road source groups; old public regression is not new evidence",
+      "factors": {"missingness": ["random sparse", "internal holes", "ray occlusion", "one-sided extrapolation"],
+        "z_noise_std_m": [0.01, 0.02, 0.04, 0.08], "inducing_points": [48, 96, 192]},
+      "truth": "complete independent reference used only for scoring, not GP input, selection, ground segmentation or thresholds",
+      "must_record": ["hidden RMSE/MAE", "source boxplots", "distance-to-observation stratification", "risk FN/FP", "height CRPS/coverage/width", "coverage of accepted predictions", "raw segmentation error"]
+    },
+    {
+      "id": "T01", "target": "Temporal maintenance and fast dynamic clearing",
+      "status": "planned_requires_resolved_ghosts_and_post_goal_observation",
+      "factors": {"obstacle_speed_mps": [0.2, 0.8, 1.5], "obstacle_count": [1, 3],
+        "motion": ["crossing", "approaching", "emerge", "leave_then_return"], "static_guard": [true]},
+      "observation": "continue at least 3 seconds after goal arrival and at least 10 seconds after vacating",
+      "must_record": ["current cloud", "FAST-LIO accumulated cloud", "baseline risk", "enhanced SEB risk", "live collision", "sustained clearing", "reappearance", "static geometry deletion", "censoring and visibility"]
+    },
+    {
+      "id": "R01", "target": "GPU scaling and end-to-end timing",
+      "status": "planned_requires_isolated_fixed_machine_measurement",
+      "factors": {"map_cells_per_side": [104, 160, 256], "yaw_bins": [18, 36, 72],
+        "points_per_scan": [10000, 50000, 200000], "backends": ["cpu", "cuda"],
+        "rendering": ["headless", "GUI balanced", "GUI full"]},
+      "warmup_calls": 30, "measured_calls_per_predeclared_combination": 100,
+      "must_record": ["cold startup separately", "wall time P50/P95/P99/max", "GPU event time", "transfer time", "memory", "queue age", "fresh map Hz", "deadline miss rate", "simulation real-time factor", "thermal/concurrent load"]
+    },
+    {
+      "id": "N01", "target": "Current-version full-chain planning and control",
+      "status": "blocked_by_detour_and_emerge_failures_not_completed",
+      "layout_goal": "at least 3 terrain categories and 10 independent layouts per major class, subject to data and simulator feasibility",
+      "repeats_per_layout": 10,
+      "classes": ["forward/reverse", "static bypass", "narrow passages", "longitudinal/lateral slope", "rough ground", "impassable step/gap", "multiple moving actors", "unexpected obstacles", "sensor/map fault"],
+      "must_record": ["arrivals with settling", "physical contacts", "independent roll/pitch/support violations", "path ratio", "tracking distribution", "command response", "first/replanning delay", "stop/resume delay", "stale-data response", "pose ATE/RPE"],
+      "statistics": "layout-cluster uncertainty; illustrative 299 IID zero-failure trials for a one-sided 95% failure upper bound below 1% is not satisfied by repeated same-layout tasks"
+    },
+    {
+      "id": "C01", "target": "External comparisons and mechanistic ablations",
+      "status": "design_only_no_external_runs",
+      "upstream_candidates": ["original SGP", "original FSGP", "original FSGP-BGK", "original SEB terrain assessment"],
+      "downstream_candidates": ["original SEB-Naver planner/controller", "explicit Hybrid-A-star plus named tracker"],
+      "matching": ["same raw inputs and held-out sources", "same vehicle and physical constraints", "same truth/visibility", "equal tuning budget on validation only", "same compute budget and timeout"],
+      "ablations": ["local GP condition", "heading footprint", "uncertainty/support guard", "temporal free-space clearing", "live collision layer"],
+      "warning": "Retain algorithm semantics. Engineering before/after tests are not external baselines; do not compare incompatible published risk scores directly."
+    }
+  ]
+}

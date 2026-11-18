@@ -1,0 +1,13 @@
+{
+  "scope": "Frozen source-measured mixed floor/column regression; no authored ground truth or runtime route.",
+  "source": "log/dense_search_repair_20261104/contract_retention",
+  "map_sha256": "78d3485e748514bc4ec940b538d82f6aefb905a3365cae73eb62cfc29ddd59c8",
+  "cloud_sha256": "52b87e6560ce4bef0e96c48c4c32ecddc7dcf596f6fb2b19f18fc7b3b35d7375",
+  "npz_sha256": "d7477c5b20aa4b5b7f489a0c94ef9fd503f51b8fcc887271032407fd575c5f63",
+  "crop_world_rows_cols": [
+    46,
+    63,
+    59,
+    76
+  ]
+}

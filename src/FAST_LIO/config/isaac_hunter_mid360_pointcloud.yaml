@@ -27,7 +27,7 @@
             # 1..4; values outside that set intentionally fall back to the
             # default PointXYZI handler in this FAST_LIO fork.
             lidar_type: 5
-            scan_line: 128
+            scan_line: 4
             scan_rate: 10
             timestamp_unit: 3
             # Isaac RTX PointCloud2 currently exposes xyz only and RTX LiDAR
@@ -49,6 +49,10 @@
             self_filter_max_z: 0.25
 
         mapping:
+            # Define map Z from a complete quiet IMU window before building
+            # any map. No truth pose or subsequent map/frame rotation is used.
+            imu_init_rest_sec: 1.0
+            gravity_align_on_init: true
             acc_cov: 0.10
             gyr_cov: 0.10
             b_acc_cov: 0.0001
@@ -58,6 +62,11 @@
             # Delete previously mapped 3D voxels only after three independent
             # scans contain rays through them to a farther return.
             dynamic_clear_enabled: true
+            dynamic_filter_backend: "none"
+            # FreeDOM's bounded depth-image proposal fills sparse scan-ray
+            # gaps for historical membership only. Raw current returns and
+            # navigation support remain independent; ground veto is retained.
+            freedom_raycast_enhancement: false
             # Propagate only multi-frame direct-clear seeds to the published
             # history when explicitly enabled for an A/B trial. Keep the
             # default conservative because static occlusion is safety-critical.
@@ -90,12 +99,12 @@
             # FAST_LIO expects p_imu = R_LI * p_lidar + T_LI.
             # Isaac mount:
             #   base_link -> imu_link  : [0.18, 0.00, 0.205], rpy [0, 0, 0]
-            #   base_link -> livox_base: [0.18, 0.00, 0.250], rpy [0, +25deg, 0]
+            #   base_link -> livox_base: [0.18, 0.00, 0.250], rpy [0, 25deg, 0]
             #   livox_base -> livox    : [-0.012, 0.0, 0.047]
-            extrinsic_T: [0.00899, 0.0, 0.09267]
-            extrinsic_R: [0.906307787, 0.0, 0.422618262,
+            extrinsic_T: [0.008987364857373087, 0.0, 0.09266788513161092]
+            extrinsic_R: [0.9063077870366499, 0.0, 0.42261826174069944,
                           0.0, 1.0, 0.0,
-                          -0.422618262, 0.0, 0.906307787]
+                          -0.42261826174069944, 0.0, 0.9063077870366499]
 
         publish:
             path_en: true
@@ -103,15 +112,18 @@
             # /cloud_registered remains the low-latency current frame used by
             # terrain_analyzer. /Laser_map is a voxel-bounded accumulated map.
             map_en: true
-            # A 1 Hz refresh exposes cleared voxels within one publish cycle.
-            map_publish_hz: 1.0
+            # Cumulative display/clearing output: cap publication delay at .5s.
+            # Registration and its voxel/sampling parameters are unchanged.
+            map_publish_hz: 2.0
             # Only the cumulative publication uses full-resolution returns.
             # Keep EKF registration and terrain input at their existing density.
             map_dense_en: true
             map_voxel_size: 0.10
             map_max_points: 800000
             scan_publish_en: true
-            dense_publish_en: false
+            # Terrain support needs the actual complete deskewed returns.
+            # This changes publication only, not EKF/map voxel filters.
+            dense_publish_en: true
             scan_bodyframe_pub_en: false
             # A radius-80 KD-tree box search on every scan prevents real-time
             # operation. The terrain chain consumes /cloud_registered.

@@ -1,0 +1,203 @@
+--- include/freedom/common_types.h
++++ include/freedom/common_types.h
+@@ -2,6 +2,9 @@
+ #define _COMMON_TYPES_H
+ 
+ #include <Eigen/Eigen>
++#include <unordered_map>
++#include <vector>
++#include <cstdint>
+ 
+ namespace freedom{
+ enum class DynamicLevel : uint8_t
+--- include/freedom/depth_image.h
++++ include/freedom/depth_image.h
+@@ -26,7 +26,7 @@
+         double min_raycast_enhancement_area;        // 最小enhancement region
+         double top_margin;                      // 用于顶部判断的margin
+ 
+-        bool learn_fov;                         // 若开启learn_fov，则不输出enhancement点云，并在程序退出时保存学习到的fov
++        bool learn_fov=false;                         // 若开启learn_fov，则不输出enhancement点云，并在程序退出时保存学习到的fov
+         bool enable_fov_mask;                   // 开启fov mask以应对非矩形fov或固定遮挡
+         std::string fov_mask_path;              // 保存或读取的fov mask路径
+ 
+@@ -90,7 +90,7 @@
+     cv::Range image_col_range;
+ 
+     // learn fov mask
+-    bool learn_fov;
++    bool learn_fov=false;
+     unsigned int scan_count;
+     std::unique_ptr<cv::Mat> average_image;
+ 
+--- include/freedom/freedom.h
++++ include/freedom/freedom.h
+@@ -1,10 +1,8 @@
+ #ifndef _FREEDOM_H
+ #define _FREEDOM_H
+ 
+-#include <ros/ros.h>
+ #include <pcl/point_cloud.h>
+-#include <geometry_msgs/TransformStamped.h>
+-#include <pcl_conversions/pcl_conversions.h>
++#include <pcl/io/pcd_io.h>
+ #include <Eigen/Eigen>
+ #include <future>
+ #include <functional>
+--- include/freedom/scanmap.h
++++ include/freedom/scanmap.h
+@@ -2,7 +2,7 @@
+ #define _SCANMAP_H
+ 
+ #include <pcl/point_cloud.h>
+-#include <pcl_conversions/pcl_conversions.h>
++#include <pcl/point_types.h>
+ #include <atomic>
+ 
+ #include "freedom/map.h"
+--- include/freedom/utils.h
++++ include/freedom/utils.h
+@@ -1,45 +1,16 @@
+ #ifndef _UTILS_H
+ #define _UTILS_H
+ 
+-#include <ros/ros.h>
+ #include <unordered_map>
++#include <chrono>
++#include <iostream>
++#include <mutex>
++#include <vector>
+ #include <Eigen/Eigen>
+-#include <geometry_msgs/TransformStamped.h>
+ 
+ #include "freedom/common_types.h"
+ 
+ namespace freedom{
+-// 简化获取参数的函数
+-class Param{
+-public:
+-    Param(ros::NodeHandle& nh): nh_(nh){}
+-
+-    template <typename T>
+-    // 若提供default_value，则在找不到参数时提供默认值
+-    void getParam(const std::string& param_name, T& param_value, const T& default_value)
+-    {
+-        if(!nh_.param(param_name,param_value,default_value))
+-            ROS_ERROR_STREAM("param missing:" << param_name << ", set default:" << default_value);
+-        
+-        return;
+-    }
+-
+-    template <typename T>
+-    // 若不提供default_value，则在找不到参数时退出
+-    void getParam(const std::string& param_name, T& param_value)
+-    {
+-        if(!nh_.param(param_name,param_value,T()))
+-        {
+-            ROS_ERROR_STREAM("param missing:" << param_name << ", node exit");
+-            ros::shutdown();
+-            std::exit(EXIT_FAILURE);
+-        }
+-    }
+-
+-private:
+-    ros::NodeHandle& nh_;
+-};
+-
+ // 计时器
+ class Timer{
+ public:
+@@ -70,7 +41,7 @@
+             ++ count;
+             is_running = false;
+ 
+-            std::cout << "[" << name << "] time: " << elapsed << " ms" << std::endl;
++            // PTR port: no per-scan stdout in real-time core.
+         }
+ 
+         void reset()
+@@ -116,20 +87,6 @@
+ private:
+     std::vector<TimerData> timers_;
+ };
+-
+-// TransformStamped to Eigen
+-inline void transformfromTFToEigen(const geometry_msgs::TransformStamped& transform_stamped, Eigen::Isometry3d& transform)
+-{
+-    transform = Eigen::Isometry3d::Identity();
+-
+-    Eigen::Vector3d t(transform_stamped.transform.translation.x, transform_stamped.transform.translation.y, transform_stamped.transform.translation.z);
+-    Eigen::Quaterniond q(transform_stamped.transform.rotation.w, transform_stamped.transform.rotation.x, transform_stamped.transform.rotation.y, transform_stamped.transform.rotation.z);
+-
+-    transform.translate(t);  // 设置平移
+-    transform.rotate(q);     // 设置旋转
+-
+-    return;
+-}
+ 
+ // 线程安全的vector遍历分配
+ // 需要保证get_ptr的指针使用周期内vector不发生改变
+@@ -280,61 +237,6 @@
+         std::cout << "Connectivity not supproted" << std::endl;
+ }
+ 
+-class ProgressBar
+-{
+-public:
+-    ProgressBar(std::string prefix_,int bar_length_,int total_steps_,int skip_):
+-        prefix(prefix_),
+-        bar_length(bar_length_),
+-        total_steps(total_steps_),
+-        skip(skip_),
+-        end(total_steps_%skip_),
+-        current_step(0),
+-        start_time(ros::Time::now()),
+-        last_print_time(ros::Time::now()){}
+-    
+-    inline void step()
+-    {
+-        current_step ++;
+-
+-        if(!time_to_print())
+-            return;
+-        
+-        unsigned int cur_bar_length = (bar_length * current_step)/total_steps;
+-        std::string bar_string(cur_bar_length,'=');
+-        std::string empty_bar_string(bar_length - cur_bar_length,' ');
+-        
+-        std::cout << std::left << std::setw(12) << prefix << "[" << bar_string << ">" << empty_bar_string << "]" << (100 * current_step)/total_steps << "% " << std::fixed << std::setprecision(3) << (last_print_time - start_time).toSec() << "s\r";
+-        std::cout.flush();
+-
+-        if(current_step == total_steps)
+-            std::cout << std::endl;
+-    }
+-
+-    inline bool time_to_print()
+-    {
+-        ros::Time now = ros::Time::now();
+-
+-        if(current_step%skip == end || (now - last_print_time).toSec() > 0.0333)
+-        {
+-            last_print_time = now;
+-            return true;
+-        }
+-
+-        return false;
+-    }
+-
+-private:
+-    std::string prefix;
+-    unsigned int bar_length;
+-    unsigned int total_steps;
+-    unsigned int current_step;
+-    unsigned int skip;
+-    unsigned int end;
+-
+-    ros::Time start_time;
+-    ros::Time last_print_time;
+-};
+-
+-}
+-#endif+
++}
++#endif

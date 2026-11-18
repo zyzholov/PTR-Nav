@@ -92,7 +92,7 @@ public:
     height_ = declare_parameter<double>("vehicle.height", 0.338);
     mesh_resource_ = declare_parameter<std::string>("mesh.resource", "package://neos_description/meshes/car.dae");
     mesh_use_embedded_materials_ = declare_parameter<bool>("mesh.use_embedded_materials", true);
-    mesh_alpha_ = declare_parameter<double>("mesh.alpha", 0.96);
+    mesh_alpha_ = declare_parameter<double>("mesh.alpha", 1.0);
     mesh_native_length_ = declare_parameter<double>("mesh.native_length", 1.0086837);
     mesh_native_width_ = declare_parameter<double>("mesh.native_width", 0.7673552);
     mesh_native_height_ = declare_parameter<double>("mesh.native_height", 0.3848279);
@@ -130,11 +130,16 @@ public:
 private:
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
+    const auto &p=msg->pose.pose.position;
+    const auto &q=msg->pose.pose.orientation;
+    const double norm=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w;
+    if(msg->header.frame_id.empty() || !std::isfinite(p.x) || !std::isfinite(p.y) ||
+       !std::isfinite(p.z) || !std::isfinite(norm) || norm<1e-12) return;
     const auto now = get_clock()->now();
     if (publish_period_sec_ > 0.0 && last_publish_time_.nanoseconds() > 0)
     {
       const double elapsed = (now - last_publish_time_).seconds();
-      if (elapsed < publish_period_sec_)
+      if (elapsed >= 0.0 && elapsed < publish_period_sec_)
       {
         return;
       }

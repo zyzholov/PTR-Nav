@@ -2,6 +2,10 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$ROOT_DIR/scripts/lib/runtime.sh"
+source "$ROOT_DIR/scripts/lib/sim_navigation_profile.sh"
+hunter_sim_navigation_profile simulation "$@"
+set -- "${HUNTER_STAGE_ARGS[@]}"
 ISAAC_ROOT="${ISAAC_SIM_ROOT:-/home/z/workspace_zyz/Isaac_Sim}"
 SCENE_SCRIPT="$ROOT_DIR/src/isaac_sim_hunter_livo2/scripts/hunter_livo2_isaac_scene.py"
 HEADLESS="false"
@@ -25,6 +29,12 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: scripts/sim/start_simulation.sh [headless:=true|false] [Isaac scene options]
 Default: GUI, Mars Gale, physical cmd_vel steering, LiDAR/IMU mapping profile.
+  navigation_profile:=neos_joint_sim  Explicit shared-model simulation preset.
+LiDAR: MID360 at +25deg, 40-phase CSV directions, actual RTX hits, 10Hz.
+  --lidar-quality mid360_csv        Default; finite 4s scan-table approximation.
+Ouster presets are diagnostic alternatives; they are not a RoboSense model.
+Physics transforms use Fabric; masses, contacts and 200 Hz stepping are unchanged.
+  --physics-transform-output usd    Compatibility/debug output (slower USD writes).
   --camera-enabled                 Add D455 RGB/depth topics.
   --camera-width 1280 --camera-height 720 --render-quality quality
   headless:=true --camera-enabled Uses a 640x360 camera and fast terrain skin.
@@ -71,6 +81,7 @@ if [[ -n "${RMW_IMPLEMENTATION:-}" && "$RMW_IMPLEMENTATION" != "$ISAAC_RMW_IMPLE
   echo "[hunter_isaac] Overriding RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION -> $ISAAC_RMW_IMPLEMENTATION for Isaac ROS2 bridge compatibility"
 fi
 export RMW_IMPLEMENTATION="$ISAAC_RMW_IMPLEMENTATION"
+hunter_configure_sim_transport
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 export PYTHONUNBUFFERED=1
@@ -97,6 +108,7 @@ fi
 echo "[hunter_isaac] Launching Isaac Sim scene from $ISAAC_ROOT"
 echo "[hunter_isaac] Extra args: ${EXTRA_ARGS[*]}"
 echo "[hunter_isaac] ROS env: ROS_DISTRO=${ROS_DISTRO:-unset} RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-unset} ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset} ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-unset}"
+echo "[hunter_isaac] Fast DDS publication mode: ${RMW_FASTRTPS_PUBLICATION_MODE:-middleware default}"
 echo "[hunter_isaac] Isaac ROS2 bridge libs: $BRIDGE_ROS_LIB"
 if [[ "$VISUAL_ONLY" == "true" ]]; then
   echo "[hunter_isaac] WARNING: --visual-only disables /clock, /livox/lidar, /imu/data_raw, /livox/imu, and D455 ROS topics." >&2

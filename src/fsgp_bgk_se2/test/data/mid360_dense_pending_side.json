@@ -1,0 +1,21 @@
+{
+  "scope": "11x11 crop of original archived measured labels; not hidden terrain or an execution certificate",
+  "source_map_sha256": "ea0544defe40a40edfddda9dea0cce144443708b8d35bb63f2aa2b3abed5515f",
+  "source_cell": [
+    44,
+    62
+  ],
+  "crop_rows": [
+    39,
+    50
+  ],
+  "crop_cols": [
+    57,
+    68
+  ],
+  "cell_xy_m": [
+    2.7,
+    -1.5
+  ],
+  "npz_sha256": "25a4efab9b62f1e455a01c2977646085b0363a32fb13bac5d653def852496a61"
+}

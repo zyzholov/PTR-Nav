@@ -1,5 +1,18 @@
 terrain_nav_node:
   ros__parameters:
+    # Enabled by the enhanced launch only; the raw SEB launch stays legacy.
+    chance_constrained: false
+    chance_state_limit: 0.05
+    chance_path_budget: 0.10
+    chance_braking_budget: 0.05
+    chance_allow_gp_completion: false
+    # NEOS datasheet: 10deg climb, 100mm vertical obstacle. Roll is a
+    # conservative operational cap, not a manufacturer rollover rating.
+    chance_max_pitch_rad: 0.17453292519943295
+    chance_max_roll_rad: 0.17453292519943295
+    chance_max_step_m: 0.10
+    vehicle_ground_clearance_m: 0.135
+    underbody_clearance_margin_m: 0.010
     use_sim_time: true
 
     odom_topic: /Odometry
@@ -7,19 +20,84 @@ terrain_nav_node:
     cmd_topic: /hunter_se/cmd_vel
     frame_id: map
     live_obstacle_enable: true
+    live_cloud_reliable: true
+    # Reactive geometry is finer than the 0.20m terrain/GP grid. Physical
+    # body/headroom margins and motion association reserve remain unchanged.
+    live_obstacle_resolution: 0.05
     live_cloud_topic: /cloud_registered
     live_obstacle_min_height: 0.32
-    # A 0.85 m local ground neighborhood keeps the live obstacle detector
-    # responsive while the inflated hard mask still protects the footprint.
+    # Ground-reference neighborhood, not vehicle or obstacle inflation.
     live_obstacle_neighbor_radius: 0.85
-    live_obstacle_min_hits: 2
+    # A voxel-filtered scan can retain only one return on a thin real obstacle.
+    # With measured ground, reserve that return immediately; direct ground
+    # clearing still needs two scans. This is conservative, not GP training.
+    live_obstacle_min_hits: 1
     live_obstacle_max_age_sec: 0.90
     live_obstacle_hold_sec: 1.00
-    live_obstacle_inflation_radius: 0.25
+    # Ground beside a thin pole in the same XY cell does not prove the pole
+    # absent. Keep the bounded reserve until expiry; 3D ray clearing is separate.
+    live_obstacle_ground_clear_enabled: false
+    # Full oriented body + 0.10m margin is checked against raw occupied cells.
+    # Do not add another vehicle-width disk or hard reserve to that geometry.
+    live_obstacle_inflation_radius: 0.0
+    live_motion_guard_enable: true
+    # Simulation-only association of newly measured upper returns around
+    # existing rigid-body labels. Collision projection stays body-height-only.
+    live_motion_tracking_max_height_m: 2.2
+    # Brake-only uncertainty for a first sparse translation, not map inflation.
+    live_motion_provisional_velocity_reserve_mps: 1.0
+    # Simulation qualification only: rank certified progress, side passes,
+    # stopping and retreats together. Hardware retains its separate defaults.
+    dynamic_acceleration_escape_enable: true
+    # Detect a coming conflict before the old 3s stopping test turns unsafe.
+    # This lengthens anticipation; full stop/action proofs keep their limits.
+    dynamic_anticipation_horizon_sec: 4.5
+    # Explicit simulation wheel-target slew contract; neos_joint_sim applies
+    # the SAME deceleration to Isaac. Faster stopping changes dynamic timing.
+    dynamic_yield_min_braking_decel: 1.20
+    # Explicit straight-line acceleration envelope for simulation challenges;
+    # not a calibrated human/vehicle intent model. Every slower/stop position
+    # remains occupied too, up to the existing 4.5m/s tracking limit.
+    live_motion_acceleration_bound_mps2: 1.2
+    # A qualified three-scan center-motion hypothesis can participate in the
+    # same complete action proof before its identity is confirmed. Weak
+    # centroid shifts remain brake-only; no identity is invented or released.
+    live_motion_center_candidate_actions: true
+    # Sim-only identity recovery across a turn/occlusion. Execution coasting
+    # stays 0.6s; reacquisition needs fresh mutually unique causal motion fits.
+    live_motion_identity_memory_sec: 5.0
+    live_motion_turning_identity_reacquisition: true
+    # Retain the original full prediction speed range. A 2m/s walking-domain
+    # diagnostic did NOT pass and must not silently become the default.
+    live_motion_prediction_maximum_speed_mps: 4.5
+    # Size alone is not motion evidence. Raw geometry and the final stopping
+    # shield remain mandatory; avoid a blanket cap near every compact post.
+    unclassified_encounter_speed_mps: 0.0
+    # A ranking preference among screened actions; independent full proofs and
+    # all hard risk budgets remain unchanged. Never interpret as calibration.
+    dynamic_risk_preference_weight: 1.0
+    # Current occupancy drives geometry; future motion must pass the final
+    # time-indexed full-body stopping certificate, including all tracks.
+    dynamic_time_indexed_routing_enable: true
+    # User-requested scope: dynamic predictions use current measured targets.
+    # Missing tracks do not latch navigation. Raw/held obstacle geometry and
+    # terrain/state/source-age checks are unchanged; this is not blind-zone safety.
+    dynamic_observed_only: true
+    # Keep measured 5cm shape for motion as well: 20cm / 0.3s registration
+    # quantizes velocity by 0.67m/s and can miss the only safe retreat window.
+    live_motion_min_resolution: 0.05
+    live_motion_horizon_sec: 1.5
 
-    wheel_base: 0.549
+    # NEOS dimension drawing: 430mm axle spacing, base at chassis midpoint.
+    wheel_base: 0.430
+    rear_axle_offset: 0.215
+    # Finite exploration preference for a tilted LiDAR's unsupported rear.
+    # It changes neither terrain probabilities nor execution admission.
+    topology_unknown_reverse_weight: 3.0
+    topology_forward_seed_enable: true
+    topology_async_guide_enable: true
     # Keep the planner model identical to the Isaac Hunter command clamps.
-    max_steer: 0.40
+    max_steer: 0.31432913231137
     max_steer_rate: 4.0
     max_speed: 1.33
     min_speed: 0.0
@@ -27,27 +105,42 @@ terrain_nav_node:
     reverse_max_distance: 4.0
     reverse_max_speed: 0.55
     desired_speed: 1.20
+    # Short active-observation prefixes are not a certified cruising corridor.
+    observation_speed_limit: 0.35
     min_tracking_speed: 0.55
     goal_slowdown_distance: 0.85
     max_accel: 1.20
 
-    footprint_front: 0.42
-    footprint_back: 0.42
+    footprint_front: 0.420
+    footprint_back: 0.420
     footprint_half_width: 0.313
-    footprint_margin: 0.04
+    footprint_margin: 0.10
+    # Encloses actual chassis AND CAD tyre sweep at every allowed steering
+    # angle (1mm outward rounding); no old oversized auxiliary bumpers.
+    body_collision_front: 0.421
+    body_collision_back: 0.421
+    body_collision_half_width: 0.360
+    # Full vehicle + sensor payload height above its supporting plane.
+    vehicle_envelope_height_m: 0.65
+    overhead_clearance_margin_m: 0.10
 
     yaw_bins: 72
     primitive_length: 0.42
     integration_step: 0.10
     max_search_time_ms: 90.0
     max_iterations: 18000
-    goal_tolerance: 0.42
-    goal_reached_distance: 0.60
+    # Position-only terminal accuracy in the estimated map frame. Reserve
+    # error margin for localization; physical truth is checked separately.
+    goal_tolerance: 0.10
+    goal_reached_distance: 0.12
     goal_yaw_tolerance: 0.95
     local_goal_distance: 8.0
     local_goal_bearing_limit: 1.55
     direct_goal_bearing_limit: 1.90
     guide_search_enable: true
+    # Optimistic global route memory chooses where to observe. Executed local
+    # SE(2) trajectories still require the full current probability contract.
+    topology_guide_enable: true
     guide_max_expansions: 6000
     guide_min_distance: 2.2
     guide_boundary_margin: 0.9
@@ -74,11 +167,17 @@ terrain_nav_node:
     unknown_robot_bubble_radius: 1.25
     unknown_robot_bubble_max_baseline: 0.08
     max_odom_age_sec: 0.5
-    max_map_age_sec: 1.0
+    max_map_age_sec: 0.5
     risk_weight: 3.6
     clearance_distance: 0.65
     clearance_weight: 4.2
-    hard_clearance_floor: 0.16
+    # Collision already includes complete occupied cells and body margin.
+    # Clearance/comfort distances below are SOFT costs and speed preferences.
+    hard_clearance_floor: 0.0
+    # Only active for an explicitly supplied advisory history layer. These are
+    # route preferences, never collision inflation or failure probabilities.
+    historical_obstacle_cost_weight: 24.0
+    historical_obstacle_influence_distance: 2.0
     comfort_clearance_distance: 1.35
     comfort_clearance_weight: 5.2
     comfort_clearance_risk_threshold: 0.14
@@ -96,6 +195,10 @@ terrain_nav_node:
     reference_smooth_weight: 1.22
     reference_curvature_weight: 0.46
     reference_max_curvature_ratio: 0.98
+    # Candidate preference for measured tracking errors, NOT map inflation or
+    # another hard safety margin. Narrow passages retain the nominal search.
+    reference_tracking_reserve_m: 0.06
+    reference_tracking_reserve_cost: 20.0
     heuristic_weight: 1.15
     progress_weight: 1.70
     path_lateral_weight: 0.28
@@ -103,6 +206,9 @@ terrain_nav_node:
     backtrack_reject_distance: 0.45
     max_extra_path_ratio: 2.35
     accept_partial_progress: true
+    # Stop refining an already certified, useful rolling frontier. This does
+    # not stop early without a frontier or bypass the final path certificate.
+    partial_search_time_ms: 20.0
 
     replan_min_interval: 0.25
     replan_path_remaining: 2.20
@@ -119,6 +225,8 @@ terrain_nav_node:
     pure_pursuit_weight: 0.42
     steer_output_sign: 1.0
 
+    tracking_controller: auto
+    # Legacy alias only; the sampled branch is random-shooting MPC, not MPPI.
     use_mppi: false
     # Pure-pursuit remains cheap enough at 50 Hz; planning is asynchronous.
     control_period: 0.02

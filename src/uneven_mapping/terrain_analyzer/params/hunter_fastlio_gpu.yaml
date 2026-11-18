@@ -1,11 +1,15 @@
 /**:
   ros__parameters:
     use_sim_time: true
+    cloud_reliable: true
 
     # Registered FAST-LIO cloud and matching odometry are already in map frame.
     cache_size: 200
     verbose: true
     publish_fused_map: true
+    # Keep ALL 36 risk slices and measured provenance; avoid transporting
+    # unused 36-slice intermediate zbx/zby arrays through the Python bridge.
+    publish_geometry_diagnostics: false
 
     sensor.ignore_z_min: -2.0
     sensor.ignore_z_max: 0.65
@@ -25,16 +29,18 @@
     elevation.mahalanobis_threshold: 2.5
     elevation.ellipsoid_x: 0.84
     elevation.ellipsoid_y: 0.626
-    elevation.ellipsoid_offset: [0.08, 0.0]
+    elevation.ellipsoid_offset: [0.0, 0.0]
     elevation.iter_num: 1
     elevation.dynamic_clear_enabled: true
     elevation.dynamic_clear_frames: 3
-    elevation.dynamic_ray_stride: 8
+    # Use every already registered ray as clearing evidence. This does not
+    # add returns, lower confirmation counts or increase occupied inflation.
+    elevation.dynamic_ray_stride: 1
     elevation.dynamic_ray_range: 20.0
 
     gpu.normal_radius: 0.30
-    gpu.max_phx: 0.786
-    gpu.max_phy: 1.571
+    gpu.max_phx: 0.17453292519943295
+    gpu.max_phy: 0.17453292519943295
     gpu.max_curvature: 1000.0
     gpu.weight_phi: 0.2
     gpu.weight_curvature: 0.6

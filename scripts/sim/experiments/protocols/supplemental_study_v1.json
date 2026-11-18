@@ -1,0 +1,40 @@
+{
+  "study_id": "PTR-SUP-01",
+  "date": "2026-10-14",
+  "scope": "新执行的本工程组件与生产模型闭环；非外部方法比较、非新增Isaac物理批次",
+  "terrain": {
+    "seed": 261014701,
+    "families": ["flat", "slope_safe", "slope_boundary", "waves", "ridge", "step_low", "step_high", "column"],
+    "geometries_per_family": 12,
+    "masks": ["random30", "hole16", "frontier50"],
+    "noise_std_m": [0.0, 0.02, 0.04],
+    "size": 64,
+    "resolution_m": 0.2,
+    "yaw_bins": 36,
+    "risk_threshold": 0.58,
+    "planned_cases": 864,
+    "truth": "解析高程、独立密集足迹几何、精确台阶交叉和矩形足迹-圆柱交叠；不使用预测生成真值",
+    "limitations": ["地面输入有生成标签", "缺测是人工控制而非RTX扫描", "足迹几何危险不是轮胎接触或实车通过真值", "默认仅修正实测地面，不启用未知补全"],
+    "metrics": ["hidden_RMSE", "hidden_MAE", "hidden_error_P95", "normal_error_deg", "PICP", "interval_width", "CRPS", "accepted_hidden_fraction", "danger_FNR", "safe_FPR", "risk_MAE"],
+    "statistical_unit": "96几何配置，其中12次平地对照为同一几何重复；共85不同几何。缺测与噪声为组内配对"
+  },
+  "scaling": {
+    "seed": 261014702,
+    "sizes": [48, 104, 160],
+    "yaw_bins": [18, 36],
+    "backends": ["cpu", "cupy"],
+    "resolution_m": 0.2,
+    "warmup_calls": 20,
+    "measured_calls": 50,
+    "planned_measured_calls": 600,
+    "scope": "同步组件墙钟含结果复制；共6工作负载，不是600独立地形；共享桌面GPU，非全系统实时保证"
+  },
+  "navigation": {
+    "seed": 261014703,
+    "per_scenario": 20,
+    "scenarios": ["straight", "turn", "reverse", "detour", "corridor", "ramp", "cross_slope", "waves", "steep_ramp", "step", "unknown", "emerge", "crossing", "stale_map"],
+    "planned_cases": 280,
+    "mppi": false,
+    "scope": "实际生产C++回调及GPU风险图，一阶自行车执行，不含PhysX、DDS、SLAM与RTX"
+  }
+}

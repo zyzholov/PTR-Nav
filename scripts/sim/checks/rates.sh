@@ -19,6 +19,8 @@ fi
 export RMW_IMPLEMENTATION="$ISAAC_RMW_IMPLEMENTATION"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
+source "$ROOT_DIR/scripts/lib/runtime.sh"
+hunter_configure_sim_transport
 
 LIDAR_MIN_HZ="${LIDAR_MIN_HZ:-9.0}"
 IMU_MIN_HZ="${IMU_MIN_HZ:-180.0}"
@@ -32,7 +34,7 @@ measure_rate() {
   local seconds="$4"
   local window="$5"
 
-  echo "[hunter_isaac_rates] Measuring $topic, expected ${expected}Hz, minimum ${minimum}Hz ..."
+  echo "[hunter_isaac_rates] Measuring $topic: nominal ${expected}Hz, timestamp minimum ${minimum}Hz, wall minimum ${MIN_REALTIME_FACTOR} x nominal ..."
   local output
   local rc=0
   output="$(timeout "$((seconds + 5))" python3 - "$topic" "$seconds" 2>&1 <<'PY'
@@ -165,8 +167,11 @@ PY
       printf("[hunter_isaac_rates] ERROR: %s wall rate %.3fHz is below %.3fHz (RTF target %.2f)\n", topic, rate, minimum, factor) > "/dev/stderr";
       exit 1;
     }
-    printf("[hunter_isaac_rates] OK: %s wall rate %.3fHz\n", topic, rate);
+    printf("[hunter_isaac_rates] OK: %s wall rate %.3fHz >= %.3fHz (data-flow threshold, not RTF=1)\n", topic, rate, minimum);
   }' || result=1
+  awk -v topic="$topic" -v factor="$realtime_factor" 'BEGIN {
+    if(factor < 0.95) printf("[hunter_isaac_rates] WARNING: %s RTF %.3f is below 0.95; simulated rate is not full wall-clock real time.\n",topic,factor);
+  }'
   return "$result"
 }
 
@@ -179,4 +184,4 @@ if [[ "$status" -ne 0 ]]; then
   echo "[hunter_isaac_rates] ERROR: one or more Isaac sensor checks failed" >&2
   exit "$status"
 fi
-echo "[hunter_isaac_rates] OK: Isaac LiDAR/IMU timestamp and wall rates are within thresholds"
+echo "[hunter_isaac_rates] OK: sensor data-flow qualification passed (wall >= ${MIN_REALTIME_FACTOR} x nominal); this is not full real-time acceptance."

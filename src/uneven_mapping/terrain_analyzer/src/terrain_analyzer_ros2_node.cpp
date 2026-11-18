@@ -265,8 +265,10 @@ public:
     }
 
     // Create subscriptions
+    rclcpp::QoS cloud_qos=rclcpp::SensorDataQoS();
+    if(declare_parameter<bool>("cloud_reliable",false))cloud_qos=rclcpp::QoS(1).reliable();
     cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-      "cloud", rclcpp::SensorDataQoS(),
+      "cloud", cloud_qos,
       std::bind(&TerrainAnalyzerNode::cloudCallback, this, std::placeholders::_1));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(

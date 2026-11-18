@@ -5,7 +5,56 @@ import struct
 import numpy as np
 import pytest
 
-from rviz_snapshot import read_xwd
+from rviz_snapshot import read_xwd, render_viewport_width, visible_capture
+
+
+class Desktop:
+    def __init__(self, active=1, accepts=True):
+        self.window, self.accepts, self.requests = active, accepts, []
+
+    def active(self):
+        return self.window
+
+    def activate(self, window):
+        self.requests.append(window)
+        if self.accepts:
+            self.window = window
+
+
+def test_capture_activates_and_restores_previous_window():
+    desktop = Desktop()
+    with visible_capture(desktop, 2, redraw=0):
+        assert desktop.active() == 2
+    assert desktop.requests == [2, 1]
+
+
+def test_capture_refuses_occluded_window():
+    desktop = Desktop(accepts=False)
+    with pytest.raises(RuntimeError, match="refusing an occluded capture"):
+        with visible_capture(desktop, 2, timeout=0, redraw=0):
+            pytest.fail("must not capture")
+
+
+def test_capture_detects_focus_change_and_does_not_steal_it_back():
+    desktop = Desktop()
+    with pytest.raises(RuntimeError, match="changed during"):
+        with visible_capture(desktop, 2, redraw=0):
+            desktop.window = 3
+    assert desktop.requests == [2]
+
+
+def test_capture_exception_restores_focus():
+    desktop = Desktop()
+    with pytest.raises(ValueError):
+        with visible_capture(desktop, 2, redraw=0):
+            raise ValueError("capture failed")
+    assert desktop.active() == 1
+
+
+def test_viewport_from_target_subtree_only():
+    tree = '  0x123 "OgreWindow(0)": () 896x820+0+0\n  0x456 "panel": () 2000x900+0+0'
+    assert render_viewport_width(tree) == 896
+    assert render_viewport_width('  0x456 "panel": () 2000x900+0+0') is None
 
 
 @pytest.mark.parametrize("bits_per_pixel", [24, 32])

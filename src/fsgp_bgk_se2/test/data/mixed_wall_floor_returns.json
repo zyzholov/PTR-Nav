@@ -1,0 +1,12 @@
+{
+  "scope": "Full original measured scan and original map layers, no truth crop; regression for ground returns enlarging a mixed wall column silhouette.",
+  "source_run": "/home/z/workspace_zyz/seb_clean/log/modular_smoke_20261111_211208",
+  "source_hashes": {
+    "map.cdr": "becc0e372ca64bc93724618decf5a7e195cfeec7b6707460784891b579d6bf65",
+    "front.cdr": "66138b25a6ade04c3bf560b20cd7e660a6cc143a7647f552b8c6b3ed6c20b6f4",
+    "completion_cloud.cdr": "421bfef5f46369c698c5af6b634cae30b493ef67ef425d8e9dd20a247fbcddf1",
+    "nearby_odom.cdr": "8e6cd5bc2b290912216ff71d2b0fb153cbaafdd4548dc2a797866af22ba55f9e"
+  },
+  "source_stamp_ns": 59114998679,
+  "fixture_sha256": "67102877f09d2d5fa3d47869bb44dbad7ffd03a7ce9d6989a05a92a02b65cbf5"
+}

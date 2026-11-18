@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Same-host simulation: SE2Grid is ~12.2 MB and the bounded PCL map can
+     exceed 25 MB. Keep complete sends well below a participant's SHM segment.
+     UDP remains available for discovery and peers on other hosts.
+     No publisher reliability, history depth or time stamp is overridden. -->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>ptr_sim_udp</transport_id>
+      <type>UDPv4</type>
+    </transport_descriptor>
+    <transport_descriptor>
+      <transport_id>ptr_sim_shm</transport_id>
+      <type>SHM</type>
+      <maxMessageSize>33554432</maxMessageSize>
+      <segment_size>134217728</segment_size>
+      <port_queue_capacity>2048</port_queue_capacity>
+    </transport_descriptor>
+  </transport_descriptors>
+  <participant profile_name="ptr_sim_participant" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>ptr_sim_udp</transport_id>
+        <transport_id>ptr_sim_shm</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>

@@ -1,0 +1,5 @@
+<library path="ptr_navigation_rviz">
+  <class name="ptr_navigation_rviz/StatusPanel" type="ptr_navigation_rviz::StatusPanel" base_class_type="rviz_common::Panel">
+    <description>Read-only controller, terrain provenance and fixed risk legend.</description>
+  </class>
+</library>

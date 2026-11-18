@@ -9,6 +9,7 @@
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.h>
+#include "terrain_analyzer/ground_fusion.hpp"
 
 #define MAX_BLOCK 400
 #define THREAD_NUM 256
@@ -66,6 +67,8 @@ __constant__ float min_var;
 __constant__ float max_var;
 __constant__ float hori_var;
 __constant__ float mahalanobis_threshold;
+__constant__ bool preserve_measured_ground;
+__constant__ float ground_recovery_max_rise;
 
 /* hxlin fixed */
 __constant__ float ellipsoid_x;
@@ -86,6 +89,11 @@ __constant__ float body2sensor_T[3];
 
 // map data
 __device__ bool map_nan[GRID_NUM];
+__device__ float ground_observed[GRID_NUM];
+__device__ float ground_pending[GRID_NUM];
+__device__ float pending_height[GRID_NUM];
+__device__ float pending_variance[GRID_NUM];
+__device__ int pending_count[GRID_NUM];
 __device__ float elevation[GRID_NUM];
 __device__ float var[GRID_NUM];
 __device__ float inpainted[GRID_NUM];
@@ -100,11 +108,17 @@ __device__ float sdf[GRID_NUM];
 __device__ int temp_idx[CLOUD_NUM];
 __device__ float temp_var[CLOUD_NUM];
 __device__ float temp_height[CLOUD_NUM];
+__device__ float temp_x_fraction[CLOUD_NUM];
+__device__ float temp_y_fraction[CLOUD_NUM];
+__device__ unsigned int temp_coverage[CLOUD_NUM];
 __device__ int cell_head[GRID_NUM];
 __device__ int point_next[CLOUD_NUM];
 __device__ int free_ray_mask[GRID_NUM];
 __device__ int free_ray_scans[GRID_NUM];
 __device__ float replacement_ground[GRID_NUM];
+__device__ terrain_analyzer::GroundScan current_ground_scan[GRID_NUM];
+__device__ bool enclosed_lower_ground[GRID_NUM];
+__device__ float ground_reobserved[GRID_NUM];
 
 __host__ __device__ void wrapIndexOne(int& idx, int buffer_size)
 {
@@ -299,6 +313,9 @@ __global__ void init_map()
     {
         map_nan[map_idx] = true;
         sdf[map_idx] = 0.0;
+        ground_observed[map_idx] = 0.0f;
+        ground_pending[map_idx] = 0.0f;
+        pending_count[map_idx] = 0;
         free_ray_scans[map_idx] = 0;
     }
 
@@ -472,6 +489,10 @@ __global__ void compute_var(int point_num,
                 // add to temp
                 Array2i index;
                 Array2f indexf = pos_map.array() * resolution_pos_inv_;
+                temp_coverage[pt_idx]=terrain_analyzer::groundCoverageBit(
+                    indexf[0]-floorf(indexf[0]),indexf[1]-floorf(indexf[1]));
+                temp_x_fraction[pt_idx]=indexf[0]-floorf(indexf[0])-.5f;
+                temp_y_fraction[pt_idx]=indexf[1]-floorf(indexf[1])-.5f;
                 index(0) = (int)indexf(0);
                 index(1) = (int)indexf(1);
                 if ( start_index[0] != 0 || start_index[1] != 0)
@@ -495,6 +516,93 @@ __global__ void compute_var(int point_num,
     }
 }
 
+struct GroundCellSamples {
+    int cell;
+    __device__ int first() const {return cell_head[cell];}
+    __device__ int next(int i) const {return point_next[i];}
+    __device__ float height(int i) const {return temp_height[i];}
+    __device__ float variance(int i) const {return temp_var[i];}
+    __device__ unsigned int coverage(int i) const {return temp_coverage[i];}
+    __device__ float x(int i) const {return temp_x_fraction[i];}
+    __device__ float y(int i) const {return temp_y_fraction[i];}
+};
+
+struct GroundPatchSamples {
+    int cell,start_x,start_y;
+    __device__ int from(int k)const {
+        for(;k<9;++k) {
+            const int j=terrain_analyzer::groundPatchCell(cell,k,size_pos[0],size_pos[1],start_x,start_y);
+            if(j>=0 && cell_head[j]>=0)return cell_head[j];
+        }
+        return -1;
+    }
+    __device__ int first()const{return from(0);}
+    __device__ int next(int i)const {
+        if(point_next[i]>=0)return point_next[i];
+        const int dx=terrain_analyzer::groundPatchDelta(temp_idx[i]%size_pos[0],cell%size_pos[0],size_pos[0]);
+        const int dy=terrain_analyzer::groundPatchDelta(temp_idx[i]/size_pos[0],cell/size_pos[0],size_pos[1]);
+        return from((dy+1)*3+dx+2);
+    }
+    __device__ float height(int i)const{return temp_height[i];}
+    __device__ float variance(int i)const{return temp_var[i];}
+    __device__ unsigned int coverage(int i)const{return temp_coverage[i];}
+    __device__ float x(int i)const{return temp_x_fraction[i]+
+        terrain_analyzer::groundPatchDelta(temp_idx[i]%size_pos[0],cell%size_pos[0],size_pos[0]);}
+    __device__ float y(int i)const{return temp_y_fraction[i]+
+        terrain_analyzer::groundPatchDelta(temp_idx[i]/size_pos[0],cell/size_pos[0],size_pos[1]);}
+};
+
+__device__ terrain_analyzer::GroundState measuredGroundState(int map_idx)
+{
+    terrain_analyzer::GroundState state;
+    if(map_idx<0)return state;
+    state.observed=!map_nan[map_idx] && ground_observed[map_idx]>=.5f;
+    if(state.observed) {
+        state.height=elevation[map_idx];state.variance=var[map_idx];
+        state.pending_count=pending_count[map_idx];
+        if(state.pending_count) {
+            state.pending_height=pending_height[map_idx];state.pending_variance=pending_variance[map_idx];
+        }
+    }
+    return state;
+}
+
+struct GroundReferences {
+    int cell,start_x,start_y;
+    __device__ int size()const{return 81;}
+    __device__ int dx(int k)const{return k%9-4;}
+    __device__ int dy(int k)const{return k/9-4;}
+    __device__ terrain_analyzer::GroundState state(int k)const {
+        return measuredGroundState(terrain_analyzer::groundNeighborhoodCell(
+            cell,k,size_pos[0],size_pos[1],start_x,start_y,9));
+    }
+};
+
+__global__ void prepare_ground_scans(Array2i start_index)
+{
+    const int i=threadIdx.x+blockIdx.x*blockDim.x;
+    if(i>=xy_num)return;
+    const GroundPatchSamples patch{i,start_index[0],start_index[1]};
+    auto scan=terrain_analyzer::patchCenteredGroundScan(GroundCellSamples{i},patch,min_var);
+    enclosed_lower_ground[i]=false;ground_reobserved[i]=0.f;
+    const auto old=measuredGroundState(i);
+    if(old.observed && scan.count &&
+       (terrain_analyzer::reobservedGroundPlane(GroundCellSamples{i},patch,
+          GroundReferences{i,start_index[0],start_index[1]},min_var,scan) ||
+        terrain_analyzer::reobservedGroundReturn(old,GroundCellSamples{i},
+          GroundReferences{i,start_index[0],start_index[1]},min_var,scan))) {
+        ground_reobserved[i]=1.f;
+        enclosed_lower_ground[i]=old.height-scan.height>.05f;
+    }
+    current_ground_scan[i]=scan;
+    if(enclosed_lower_ground[i])return;
+    if(!scan.count || !scan.centered || !old.observed || old.height-scan.height<.05f)return;
+    terrain_analyzer::GroundState neighbors[9];
+    for(int k=0;k<9;++k)neighbors[k]=measuredGroundState(terrain_analyzer::groundPatchCell(
+        i,k,size_pos[0],size_pos[1],start_index[0],start_index[1]));
+    enclosed_lower_ground[i]=terrain_analyzer::enclosedLowerGround(old,scan,neighbors);
+}
+
 __global__ void compute_elevation()
 {
     // add to map ( var update using KF )
@@ -503,39 +611,25 @@ __global__ void compute_elevation()
     {
         sdf[map_idx] = 0.0;
         // risk[map_idx] = 0.0;
-        for (int i=cell_head[map_idx]; i!=-1; i=point_next[i])
-        {
-            float height = temp_height[i];
-            float tvar = temp_var[i];
-
-            if (map_nan[map_idx])
-            {
-                elevation[map_idx] = height;
-                var[map_idx] = tvar;
-                map_nan[map_idx] = false;
-            }else
-            {
-                float mahalanobisDistance = fabs(height - elevation[map_idx]) / sqrt(tvar);
-                if (mahalanobisDistance > mahalanobis_threshold)
-                {
-                    elevation[map_idx] = height;
-                    var[map_idx] = tvar;
-                }
-                else
-                {
-                    float var_old = var[map_idx];
-                    float ele_old = elevation[map_idx];
-                    elevation[map_idx] = (var_old * height + tvar * ele_old)
-                                                        / (var_old + tvar);
-                    var[map_idx] = (var_old * tvar) / (var_old + tvar);
-                }
-            }
-            var[map_idx] = max(min_var, var[map_idx]);
+        auto state=measuredGroundState(map_idx);
+        const auto scan=current_ground_scan[map_idx];
+        state=terrain_analyzer::fuseGroundScan(state,scan,min_var,mahalanobis_threshold,
+            preserve_measured_ground,ground_recovery_max_rise,enclosed_lower_ground[map_idx]);
+        pending_count[map_idx]=state.pending_count;
+        ground_pending[map_idx]=state.pending_count?1.f:0.f;
+        if(state.pending_count) {
+            pending_height[map_idx]=state.pending_height;
+            pending_variance[map_idx]=state.pending_variance;
+        }
+        if(state.observed) {
+            elevation[map_idx]=state.height;var[map_idx]=state.variance;
+            ground_observed[map_idx]=1.f;map_nan[map_idx]=false;
         }
         if (map_nan[map_idx])
         {
             elevation[map_idx] = NAN;
             var[map_idx] = NAN;
+            ground_observed[map_idx] = 0.0f;
         }
     }
 }
@@ -568,7 +662,8 @@ __global__ void mark_free_rays(int point_num, const float* points_world,
         wrapIndexOne(iy, size_pos[1]);
         const int cell = iy * size_pos[0] + ix;
         if (cell_head[cell] != -1 || map_nan[cell]) continue;
-        if (fabsf(elevation[cell] - sample.z()) <= 0.32f)
+        // A beam above the old surface does not disprove its measured height.
+        if (terrain_analyzer::freeRayIntersectsGround(measuredGroundState(cell),sample.z()))
             atomicExch(&free_ray_mask[cell], 1);
     }
 }
@@ -587,55 +682,10 @@ __global__ void find_dynamic_ground(Array2i start_index, int clear_frames)
         free_ray_scans[cell] = min(10, free_ray_scans[cell] + 1);
     if (free_ray_scans[cell] < clear_frames) return;
 
-    const int physical_x = cell % size_pos[0];
-    const int physical_y = cell / size_pos[0];
-    int logical_x = physical_x - start_index[0];
-    int logical_y = physical_y - start_index[1];
-    wrapIndexOne(logical_x, size_pos[0]);
-    wrapIndexOne(logical_y, size_pos[1]);
-    float low = INFINITY;
-    int support = 0;
-    for (int dy = -3; dy <= 3; ++dy)
-    {
-        if (logical_y + dy < 0 || logical_y + dy >= size_pos[1]) continue;
-        for (int dx = -3; dx <= 3; ++dx)
-        {
-            if (logical_x + dx < 0 || logical_x + dx >= size_pos[0] ||
-                (dx == 0 && dy == 0)) continue;
-            int ix = physical_x + dx;
-            int iy = physical_y + dy;
-            wrapIndexOne(ix, size_pos[0]);
-            wrapIndexOne(iy, size_pos[1]);
-            const int nearby = iy * size_pos[0] + ix;
-            if (!map_nan[nearby] && elevation[nearby] < elevation[cell] - 0.4f)
-            {
-                low = fminf(low, elevation[nearby]);
-                ++support;
-            }
-        }
-    }
-    if (support < 3 || !isfinite(low)) return;
-    float sum = 0.0f;
-    int count = 0;
-    for (int dy = -3; dy <= 3; ++dy)
-    {
-        if (logical_y + dy < 0 || logical_y + dy >= size_pos[1]) continue;
-        for (int dx = -3; dx <= 3; ++dx)
-        {
-            if (logical_x + dx < 0 || logical_x + dx >= size_pos[0]) continue;
-            int ix = physical_x + dx;
-            int iy = physical_y + dy;
-            wrapIndexOne(ix, size_pos[0]);
-            wrapIndexOne(iy, size_pos[1]);
-            const int nearby = iy * size_pos[0] + ix;
-            if (!map_nan[nearby] && elevation[nearby] <= low + 0.25f)
-            {
-                sum += elevation[nearby];
-                ++count;
-            }
-        }
-    }
-    if (count >= 3) replacement_ground[cell] = sum / count;
+    float reference=NAN;
+    if(terrain_analyzer::freeSpaceGroundReference(measuredGroundState(cell),
+        GroundReferences{cell,start_index[0],start_index[1]},free_ray_scans[cell],
+        clear_frames,ground_recovery_max_rise,reference))replacement_ground[cell]=reference;
 }
 
 __global__ void apply_dynamic_ground()
@@ -645,8 +695,39 @@ __global__ void apply_dynamic_ground()
     {
         elevation[cell] = replacement_ground[cell];
         var[cell] = fmaxf(min_var, 0.01f);
+        ground_observed[cell] = 0.0f;
+        ground_pending[cell] = 0.0f;
+        pending_count[cell] = 0;
         free_ray_scans[cell] = 0;
     }
+}
+
+void copyObservedGroundMask(MatrixXf& observed)
+{
+    checkCudaError(cudaMemcpyFromSymbol(observed.data(), ground_observed,
+                                       sizeof(float)*observed.size()));
+}
+
+void copyPendingGroundMask(MatrixXf& pending)
+{
+    checkCudaError(cudaMemcpyFromSymbol(pending.data(), ground_pending,sizeof(float)*pending.size()));
+}
+
+void copyReobservedGroundMask(MatrixXf& witness)
+{
+    checkCudaError(cudaMemcpyFromSymbol(witness.data(),ground_reobserved,sizeof(float)*witness.size()));
+}
+
+void copyPendingGroundEvidence(MatrixXf& height,MatrixXf& variance,const MatrixXf& mask)
+{
+    checkCudaError(cudaMemcpyFromSymbol(height.data(),pending_height,sizeof(float)*height.size()));
+    checkCudaError(cudaMemcpyFromSymbol(variance.data(),pending_variance,sizeof(float)*variance.size()));
+    for(int i=0;i<mask.size();++i)if(mask.data()[i]<.5f)height.data()[i]=variance.data()[i]=NAN;
+}
+
+void configureGroundRecovery(float maximum_rise)
+{
+    checkCudaError(cudaMemcpyToSymbol(ground_recovery_max_rise,&maximum_rise,sizeof(float)));
 }
 
 __global__ void compute_inpaint_spiral(Array2i start_index,
@@ -1055,6 +1136,7 @@ void gpuInit(const Vector2i& size_pos_,
             float ignore_z_max_,
             float beam_sigma2_,
             const Vector3f& body2sensor_T_,
+            bool preserve_measured_ground_,
             bool dynamic_clear_enabled_,
             int dynamic_clear_frames_,
             int dynamic_ray_stride_,
@@ -1063,6 +1145,7 @@ void gpuInit(const Vector2i& size_pos_,
     // set up
     cudaSetDevice(0);
     sensor_offset_body = body2sensor_T_;
+    checkCudaError(cudaMemcpyToSymbol(preserve_measured_ground, &preserve_measured_ground_, sizeof(bool)));
     dynamic_clear_enabled_host = dynamic_clear_enabled_;
     dynamic_clear_frames_host = dynamic_clear_frames_;
     dynamic_ray_stride_host = dynamic_ray_stride_;
@@ -1430,6 +1513,9 @@ void computerMapSE2(const int& point_num_,
 
     // compute map
     blocksPerGrid = (xy_num_ + THREAD_NUM - 1) / THREAD_NUM;
+    // Separate kernels keep all neighborhood corroboration on the same
+    // pre-update map; no cross-thread reads while another cell is fused.
+    prepare_ground_scans<<<blocksPerGrid, THREAD_NUM>>>(start_idx_);
 	compute_elevation<<<blocksPerGrid, THREAD_NUM>>>();
     if (dynamic_clear_enabled_host)
     {
@@ -1488,12 +1574,14 @@ void computerMapSE2(const int& point_num_,
     
     t0= clock();
 
+    // These layers are algorithm inputs, not debug output. Disabling verbose
+    // must not freeze elevation/variance while newer risk slices are emitted.
+    cudaMemcpyFromSymbol(elevation_.data(), elevation, sizeof(float)*xy_num_);
+    cudaMemcpyFromSymbol(var_.data(), var, sizeof(float)*xy_num_);
     if (verbose_)
     {
 
         // get map
-        cudaMemcpyFromSymbol(elevation_.data(), elevation, sizeof(float)*xy_num_);
-        cudaMemcpyFromSymbol(var_.data(), var, sizeof(float)*xy_num_);
         cudaMemcpyFromSymbol(inpainted_.data(), inpainted, sizeof(float)*xy_num_);
         cudaMemcpyFromSymbol(smooth_.data(), smooth, sizeof(float)*xy_num_);
 

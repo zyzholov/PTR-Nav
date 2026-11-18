@@ -1,0 +1,32 @@
+{
+  "study_id": "PTR-PAPER-03",
+  "date": "2026-10-15",
+  "status": "design frozen before main campaign; preflight excluded",
+  "scope": "Own method only. Parameter sensitivity and static planner-query study, not external comparison or physical closed-loop qualification.",
+  "references": [
+    {"paper": "Real-time Spatial-temporal Traversability Assessment via Feature-based Sparse Gaussian Process", "section": "IV, pp.17537-17539", "adopted": "five terrain categories; inducing-budget accuracy/runtime sensitivity; separate dimensionless risk error from height error", "not_reproduced": "original traversability ground-truth formula, temporal posterior fusion, original datasets and external baselines"},
+    {"paper": "SEB-Naver", "section": "VII, pp.5797-5799", "adopted": "random start-goal queries, planning time and path length; retain rejection and failures", "not_reproduced": "full mapping-kernel timing, vehicle dynamics or original environment set"},
+    {"paper": "An Efficient Trajectory Planner for Car-Like Robots on Uneven Terrain", "section": "IV-C, pp.2858-2859", "adopted": "repeated random queries; planning time and curvature alongside feasibility", "not_reproduced": "polynomial trajectory curvature, physical tracking or original terrain scenes"}
+  ],
+  "terrain": {
+    "seed": 261015902, "new_geometry_seed": 261015901,
+    "families": ["hilly", "forest", "ruin", "road", "indoor"], "inputs_per_family": 100,
+    "new_generated_geometries": 300, "public_regression_inputs": 200,
+    "conditions": ["point15", "hole16", "frontier50"],
+    "inducing_budgets": [50, 125, 250, 500], "planned_computations": 6000,
+    "controlled": "same masked input and noise paired across M; max_train_points=512 fixed, local conditioning on; no unknown completion; random budget order; ground labels supplied",
+    "primary": ["hidden_rmse_m", "hidden_mae_m", "risk_mae", "risk_error_variance", "false_safe", "false_hazard", "total_wall_ms"],
+    "secondary": ["hidden_crps_m", "hidden_picp95", "hidden_width95_m", "hidden_candidate_coverage", "effective_M", "local_hidden_fraction", "fit_ms", "predict_ms", "risk_ms"],
+    "statistics": "source-group equal-weight summaries, paired differences and source bootstrap 95% intervals; disclose empty denominators and supported-reference counts"
+  },
+  "planning": {
+    "seed": 261015903, "queries_per_family": 100, "timing_repeats": 3,
+    "families": ["turn", "reverse", "detour", "corridor", "ramp", "cross_slope", "waves", "steep_ramp", "step", "unknown"],
+    "planned_queries": 1000, "planned_calls": 3000,
+    "primary": ["planner_wall_ms", "returned", "independent_path_safe", "full_goal_connector"],
+    "secondary": ["path_length_m", "mean_abs_curvature_per_m", "gear_switches", "independent_validation_samples"],
+    "timing_boundary": "executePlannerJob synchronous whole call; excludes CDR loading, map update and independent validation; fresh node per repetition but not machine cold start",
+    "reference": "independent dense 13x11 footprint and rectangle SAT along 0.05m path samples; geometric proxy only",
+    "exclusions": "invalid initial states reported not silently removed; local safe partial paths separate from complete goal connections; reject-target queries separate from reachable queries"
+  }
+}

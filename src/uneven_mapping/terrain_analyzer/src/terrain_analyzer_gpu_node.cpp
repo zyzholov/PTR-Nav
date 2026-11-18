@@ -30,6 +30,12 @@ using Eigen::Vector2f;
 using Eigen::Vector2i;
 using Eigen::Vector3f;
 
+void copyObservedGroundMask(MatrixXf& observed);
+void copyPendingGroundMask(MatrixXf& pending);
+void copyReobservedGroundMask(MatrixXf& witness);
+void copyPendingGroundEvidence(MatrixXf& height,MatrixXf& variance,const MatrixXf& mask);
+void configureGroundRecovery(float maximum_rise);
+
 void gpuInit(const Vector2i& size_pos_,
              int size_yaw_,
              int iter_num_,
@@ -54,6 +60,7 @@ void gpuInit(const Vector2i& size_pos_,
              float ignore_z_max_,
              float beam_sigma2_,
              const Vector3f& body2sensor_T_,
+             bool preserve_measured_ground_,
              bool dynamic_clear_enabled_,
              int dynamic_clear_frames_,
              int dynamic_ray_stride_,
@@ -215,6 +222,7 @@ public:
     declare_parameter("cache_size", 200);
     declare_parameter("verbose", true);
     declare_parameter("publish_fused_map", true);
+    publish_geometry_diagnostics_=declare_parameter("publish_geometry_diagnostics",true);
     declare_parameter("sdf.threshold", 0.5);
 
     declare_parameter("sensor.ignore_z_max", 0.5);
@@ -235,6 +243,8 @@ public:
     declare_parameter("elevation.ellipsoid_offset", std::vector<double>{0.13, 0.0});
     declare_parameter("elevation.iter_num", 1);
     declare_parameter("elevation.dynamic_clear_enabled", false);
+    declare_parameter("elevation.preserve_measured_ground", false);
+    declare_parameter("elevation.ground_recovery_max_rise_m", 0.18);
     declare_parameter("elevation.dynamic_clear_frames", 3);
     declare_parameter("elevation.dynamic_ray_stride", 8);
     declare_parameter("elevation.dynamic_ray_range", 20.0);
@@ -277,6 +287,10 @@ public:
     const float ellipsoid_y = static_cast<float>(get_parameter("elevation.ellipsoid_y").as_double());
     const int iter_num = get_parameter("elevation.iter_num").as_int();
     const bool dynamic_clear_enabled = get_parameter("elevation.dynamic_clear_enabled").as_bool();
+    const bool preserve_measured_ground = get_parameter("elevation.preserve_measured_ground").as_bool();
+    const double ground_recovery=get_parameter("elevation.ground_recovery_max_rise_m").as_double();
+    if(!std::isfinite(ground_recovery)||ground_recovery<0||ground_recovery>.18)
+      throw std::invalid_argument("ground recovery rise must be within [0,0.18] m; raw collisions remain independent");
     const int dynamic_clear_frames = std::clamp(
       static_cast<int>(get_parameter("elevation.dynamic_clear_frames").as_int()), 2, 10);
     const int dynamic_ray_stride = std::clamp(
@@ -326,6 +340,11 @@ public:
     fused_map_.initGeometry(length_pos.cast<double>(), resolution_pos, resolution_yaw, Vector2d::Zero());
     fused_map_.add("elevation", false, 0.0);
     fused_map_.add("var", false, 0.0);
+    fused_map_.add("ground_observed", false, 0.0);
+    fused_map_.add("ground_pending", false, 0.0);
+    fused_map_.add("ground_reobserved", false, 0.0);
+    fused_map_.add("ground_pending_elevation", false, 0.0);
+    fused_map_.add("ground_pending_variance", false, 0.0);
     fused_map_.add("inpainted", false, 0.0);
     fused_map_.add("smooth", false, 0.0);
     fused_map_.add("normal_x", false, 0.0);
@@ -372,16 +391,20 @@ public:
             ignore_z_max,
             beam_sigma * beam_sigma,
             body2sensor_t,
+            preserve_measured_ground,
             dynamic_clear_enabled,
             dynamic_clear_frames,
             dynamic_ray_stride,
             dynamic_ray_range);
+    configureGroundRecovery(static_cast<float>(ground_recovery));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       "odom", rclcpp::QoS(rclcpp::KeepLast(50)),
       std::bind(&TerrainAnalyzerGpuNode::odomCallback, this, std::placeholders::_1));
+    rclcpp::QoS cloud_qos=rclcpp::SensorDataQoS();
+    if(declare_parameter<bool>("cloud_reliable",false))cloud_qos=rclcpp::QoS(1).reliable();
     cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-      "cloud", rclcpp::SensorDataQoS(),
+      "cloud", cloud_qos,
       std::bind(&TerrainAnalyzerGpuNode::cloudCallback, this, std::placeholders::_1));
 
     fused_pub_ = create_publisher<se2_grid_msgs::msg::SE2Grid>("fused_map", rclcpp::QoS(1));
@@ -416,6 +439,8 @@ private:
 
   void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
   {
+    const auto source_ns=rclcpp::Time(msg->header.stamp).nanoseconds();
+    if(source_ns==last_processed_cloud_ns_)return;
     pcl::PointCloud<pcl::PointXYZ> cloud;
     try
     {
@@ -513,6 +538,13 @@ private:
       position_map,
       verbose_);
 
+    copyObservedGroundMask(fused_map_["ground_observed"][0]);
+    copyPendingGroundMask(fused_map_["ground_pending"][0]);
+    copyReobservedGroundMask(fused_map_["ground_reobserved"][0]);
+    copyPendingGroundEvidence(fused_map_["ground_pending_elevation"][0],fused_map_["ground_pending_variance"][0],
+                              fused_map_["ground_pending"][0]);
+    last_processed_cloud_ns_=source_ns;
+
     fused_map_.setPosition(position_map.cast<double>());
     fused_map_.setStartIndex(start_idx_map);
 
@@ -538,7 +570,15 @@ private:
 
     if (publish_fused_map_)
     {
-      se2_grid::SE2GridRosConverter::toMessage(fused_map_, fused_msg);
+      auto layers=fused_map_.getLayers();
+      if(!publish_geometry_diagnostics_) {
+        // These are intermediate oriented normals, not the risk slices or
+        // measured terrain. The FSGP chain reconstructs its own geometry.
+        layers.erase(std::remove_if(layers.begin(),layers.end(),[](const std::string &name){
+          return name=="zbx" || name=="zby";
+        }),layers.end());
+      }
+      se2_grid::SE2GridRosConverter::toMessage(fused_map_,layers,fused_msg);
       fused_msg.info.header.stamp = stamp;
       fused_msg.info.header.frame_id = "map";
       fused_pub_->publish(fused_msg);
@@ -553,7 +593,9 @@ private:
   int cache_size_ = 200;
   bool verbose_ = true;
   bool publish_fused_map_ = true;
+  bool publish_geometry_diagnostics_=true;
   float sdf_threshold_ = 0.5f;
+  int64_t last_processed_cloud_ns_=-1;
 
   std::deque<nav_msgs::msg::Odometry::SharedPtr> odom_cache_;
   se2_grid::SE2Grid fused_map_;
